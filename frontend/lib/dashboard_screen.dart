@@ -2,11 +2,11 @@ import 'package:flutter/material.dart';
 
 import 'login_screen.dart';
 
-class ProfileScreen extends StatelessWidget {
+class DashboardScreen extends StatelessWidget {
   final String email;
   final String userId;
 
-  const ProfileScreen({
+  const DashboardScreen({
     super.key,
     required this.userId,
     required this.email,
@@ -26,7 +26,7 @@ class ProfileScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Profile'),
+        title: const Text('Dashboard'),
         actions: [
           TextButton(
             onPressed: () => logout(context),

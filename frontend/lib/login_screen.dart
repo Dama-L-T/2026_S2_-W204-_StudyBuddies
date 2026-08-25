@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
 import 'register_screen.dart';
-import 'profile_screen.dart';
+import 'dashboard_screen.dart';
 
 
 class LoginScreen extends StatefulWidget {
@@ -94,7 +94,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
           MaterialPageRoute(
             builder: (context) =>
-                ProfileScreen(
+                DashboardScreen(
               userId: user['id'],
               email: user['email'],
             ),
