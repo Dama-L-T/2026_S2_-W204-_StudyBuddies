@@ -3,3 +3,5 @@ uvicorn[standard]
 flutter
 supabase
 python-dotenv
+pydantic
+email-validator
