@@ -1,3 +1,4 @@
+
 # ============================================================
 # Backend - Python / FastAPI
 # ============================================================
@@ -84,3 +85,46 @@ Desktop.ini
 .env
 .env.*
 !.env.example
+=======
+# macOS
+.DS_Store
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+backend/.env
+frontend/.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+.venv/
+venv/
+env/
+pip-wheel-metadata/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Flutter / Dart
+frontend/.dart_tool/
+frontend/.flutter-plugins
+frontend/.flutter-plugins-dependencies
+frontend/.pub-cache/
+frontend/.pub/
+frontend/build/
+frontend/coverage/
+frontend/android/local.properties
+
+# IDEs and editor state
+.idea/
+*.iml
+.vscode/
+
+# Logs
+*.log

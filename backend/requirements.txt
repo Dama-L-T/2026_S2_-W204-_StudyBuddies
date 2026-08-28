@@ -1,6 +1,5 @@
 fastapi
 uvicorn[standard]
-flutter
 supabase
 python-dotenv
 pydantic
