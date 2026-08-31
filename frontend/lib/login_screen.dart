@@ -5,7 +5,7 @@ import 'package:http/http.dart' as http;
 
 import 'register_screen.dart';
 import 'dashboard_screen.dart';
-
+import 'forgot_password_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   final String? successMessage;
@@ -217,7 +217,26 @@ class _LoginScreenState extends State<LoginScreen> {
                   : 'Login',
             ),
           ),
+const SizedBox(height: 8),
 
+Center(
+  child: TextButton(
+    onPressed: isLoading
+        ? null
+        : () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) =>
+                    const ForgotPasswordScreen(),
+              ),
+            );
+          },
+    child: const Text(
+      'Forgot Password?',
+    ),
+  ),
+),
 
           const SizedBox(height: 12),
 
