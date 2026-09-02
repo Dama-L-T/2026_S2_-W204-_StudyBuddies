@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'register_screen.dart';
 import 'dashboard_screen.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 class LoginScreen extends StatefulWidget {
   final String? successMessage;
@@ -21,6 +22,7 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final emailController = TextEditingController();
   final passwordController = TextEditingController();
+  final baseUrl = dotenv.env['BASE_URL']!;
   bool isLoading = false;
   bool isPasswordVisible = false;
   String? formError;
@@ -58,9 +60,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
     try {
       final response = await http.post(
-        Uri.parse(
-          'http://10.0.2.2:8000/auth/login',
-        ),
+        Uri.parse('$baseUrl/auth/login'),
 
         headers: {
           'Content-Type': 'application/json',

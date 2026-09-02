@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'login_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
@@ -18,6 +19,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final confirmPasswordController = TextEditingController();
   final emailFocusNode = FocusNode();
   final confirmPasswordFocusNode = FocusNode();
+  final baseUrl = dotenv.env['BASE_URL']!;
   String? formError;
   String? emailError;
   String? confirmPasswordError;
@@ -66,9 +68,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
     try {
       final checkResponse = await http.post(
-        Uri.parse(
-          'http://10.0.2.2:8000/auth/check-email',
-        ),
+        Uri.parse('$baseUrl/auth/check-email'),
         headers: {
           'Content-Type': 'application/json',
         },
@@ -98,9 +98,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
       }
 
       final response = await http.post(
-        Uri.parse(
-          'http://10.0.2.2:8000/auth/register',
-        ),
+        Uri.parse('$baseUrl/auth/register'),
 
         headers: {
           'Content-Type': 'application/json',
