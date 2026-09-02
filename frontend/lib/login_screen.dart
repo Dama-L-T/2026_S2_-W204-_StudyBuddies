@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'register_screen.dart';
 import 'dashboard_screen.dart';
-import 'package:flutter/gestures.dart';
 
 class LoginScreen extends StatefulWidget {
   final String? successMessage;
@@ -342,15 +341,11 @@ class _LoginScreenState extends State<LoginScreen> {
                       fontSize: 14,
                     ),
                   ),
-                  TextSpan(
-                    text: "Sign up",
-                    style: const TextStyle(
-                      color: Colors.blue,
-                      fontSize: 14,
-                      fontWeight: FontWeight.bold,
-                    ),
-                    recognizer: TapGestureRecognizer()
-                      ..onTap = () {
+                  WidgetSpan(
+                    alignment: PlaceholderAlignment.baseline,
+                    baseline: TextBaseline.alphabetic,
+                    child: GestureDetector(
+                      onTap: () {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
@@ -358,6 +353,15 @@ class _LoginScreenState extends State<LoginScreen> {
                           ),
                         );
                       },
+                      child: const Text(
+                        'Sign up',
+                        style: TextStyle(
+                          color: Colors.blue,
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
                   ),
                 ],
               ),

@@ -163,6 +163,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
     passwordController.dispose();
     confirmPasswordController.dispose();
     emailFocusNode.dispose();
+    confirmPasswordFocusNode.dispose();
     super.dispose();
   }
 
