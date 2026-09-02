@@ -19,7 +19,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final confirmPasswordController = TextEditingController();
   final emailFocusNode = FocusNode();
   final confirmPasswordFocusNode = FocusNode();
-  final baseUrl = dotenv.env['BASE_URL']!;
+  final baseUrl = dotenv.env['API_BASE_URL']!;
   String? formError;
   String? emailError;
   String? confirmPasswordError;

@@ -22,7 +22,7 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final emailController = TextEditingController();
   final passwordController = TextEditingController();
-  final baseUrl = dotenv.env['BASE_URL']!;
+  final baseUrl = dotenv.env['API_BASE_URL']!;
   bool isLoading = false;
   bool isPasswordVisible = false;
   String? formError;
