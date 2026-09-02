@@ -85,14 +85,6 @@ Desktop.ini
 .env
 .env.*
 !.env.example
-=======
-# macOS
-.DS_Store
-
-# Environment and secrets
-.env
-.env.*
-!.env.example
 backend/.env
 frontend/.env
 
@@ -110,6 +102,7 @@ pip-wheel-metadata/
 .ruff_cache/
 .coverage
 htmlcov/
+backend/test/
 
 # Flutter / Dart
 frontend/.dart_tool/

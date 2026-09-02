@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'register_screen.dart';
-import 'dashboard_screen.dart';
+import 'Schedule/schedule.page.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -22,7 +22,7 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final emailController = TextEditingController();
   final passwordController = TextEditingController();
-  final baseUrl = dotenv.env['BASE_URL']!;
+  final baseUrl = dotenv.env['API_BASE_URL']!;
   bool isLoading = false;
   bool isPasswordVisible = false;
   String? formError;
@@ -79,15 +79,12 @@ class _LoginScreenState extends State<LoginScreen> {
       if (!mounted) return;
 
       if (response.statusCode == 200) {
-        final user = data['user'];
-
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
-            builder: (context) =>
-                DashboardScreen(
-              userId: user['id'],
-              email: user['email'],
+            builder: (context) => SchedulerScreen(
+              apiBaseUrl: baseUrl,
+              accessToken: data['access_token'],
             ),
           ),
         );
@@ -372,4 +369,3 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 }
-
