@@ -53,6 +53,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
     setState(() {
       formError = null;
+      successMessage = null;
       isLoading = true;
     });
 
