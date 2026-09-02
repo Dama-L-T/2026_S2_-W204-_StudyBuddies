@@ -5,11 +5,13 @@ from app.schemas.auth import (
     LoginResponse,
     RegisterRequest,
     RegisterResponse,
+    CheckEmailRequest,
 )
 
 from app.services.auth_service import (
     login_with_password,
     signup_with_email,
+    check_email_available,
 )
 
 
@@ -60,5 +62,33 @@ def register(request: RegisterRequest):
 
         raise HTTPException(
             status_code=400,
+            detail=str(error),
+        ) from error
+
+
+@router.post("/check-email")
+def check_email(request: CheckEmailRequest):
+    try:
+        available = check_email_available(request.email)
+
+        if not available:
+            raise HTTPException(
+                status_code=409,
+                detail="This email is already registered.",
+            )
+
+        return {
+            "available": True,
+            "message": "Email is available.",
+        }
+
+    except HTTPException:
+        raise
+
+    except Exception as error:
+        print("CHECK EMAIL ERROR:", repr(error))
+
+        raise HTTPException(
+            status_code=500,
             detail=str(error),
         ) from error

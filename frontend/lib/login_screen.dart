@@ -1,11 +1,9 @@
 import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-
 import 'register_screen.dart';
 import 'dashboard_screen.dart';
-
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 class LoginScreen extends StatefulWidget {
   final String? successMessage;
@@ -15,7 +13,6 @@ class LoginScreen extends StatefulWidget {
     this.successMessage,
   });
 
-
   @override
   State<LoginScreen> createState() =>
       _LoginScreenState();
@@ -23,48 +20,47 @@ class LoginScreen extends StatefulWidget {
 
 
 class _LoginScreenState extends State<LoginScreen> {
-
   final emailController = TextEditingController();
-
   final passwordController = TextEditingController();
-
+  final baseUrl = dotenv.env['BASE_URL']!;
   bool isLoading = false;
-
+  bool isPasswordVisible = false;
+  String? formError;
+  String? successMessage;
 
   Future<void> login() async {
+    final email = emailController.text.trim();
+    final password = passwordController.text;
+    final errors = <String>[];
 
-    final email =
-        emailController.text.trim();
-
-    final password =
-        passwordController.text;
-
-
-    if (email.isEmpty || password.isEmpty) {
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Please enter email and password',
-          ),
-        ),
+    if (email.isEmpty) {
+      errors.add('Please enter your email');
+    } else if (!email.toLowerCase().endsWith('@autuni.ac.nz')) {
+      errors.add(
+        'Please use your AUT email (@autuni.ac.nz)',
       );
+    }
 
+    if (password.isEmpty) {
+      errors.add('Please enter your password');
+    }
+
+    if (errors.isNotEmpty) {
+      setState(() {
+        formError = errors.map((error) => '• $error').join('\n');
+      });
       return;
     }
 
-
     setState(() {
+      formError = null;
+      successMessage = null;
       isLoading = true;
     });
 
-
     try {
-
       final response = await http.post(
-        Uri.parse(
-          'http://10.0.2.2:8000/auth/login',
-        ),
+        Uri.parse('$baseUrl/auth/login'),
 
         headers: {
           'Content-Type': 'application/json',
@@ -76,22 +72,17 @@ class _LoginScreenState extends State<LoginScreen> {
         }),
       );
 
-
       final data = jsonDecode(
         response.body,
       );
 
-
       if (!mounted) return;
 
-
       if (response.statusCode == 200) {
-
         final user = data['user'];
 
         Navigator.pushReplacement(
           context,
-
           MaterialPageRoute(
             builder: (context) =>
                 DashboardScreen(
@@ -102,21 +93,12 @@ class _LoginScreenState extends State<LoginScreen> {
         );
 
       } else {
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              data['detail'] ??
-                  'Login failed',
-            ),
-          ),
-        );
-      }
-
+          setState(() {
+            formError = '• Invalid email or password';
+          });
+        }
     } catch (e) {
-
       if (!mounted) return;
-
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -124,11 +106,8 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
         ),
       );
-
     } finally {
-
       if (mounted) {
-
         setState(() {
           isLoading = false;
         });
@@ -142,52 +121,155 @@ class _LoginScreenState extends State<LoginScreen> {
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (widget.successMessage != null && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(widget.successMessage!),
-          ),
-        );
+        setState(() {
+          successMessage = widget.successMessage;
+        });
       }
     });
   }
 
   @override
   void dispose() {
-
     emailController.dispose();
-
     passwordController.dispose();
-
     super.dispose();
   }
 
-
   @override
   Widget build(BuildContext context) {
-
     return Scaffold(
-
-      appBar: AppBar(
-        title: const Text('Login'),
-      ),
+      backgroundColor: Colors.black,
 
       body: ListView(
-
         padding: const EdgeInsets.symmetric(
-          horizontal: 12,
-          vertical: 50,
+          horizontal: 40,
+          vertical: 0,
         ),
 
         children: [
+          Image.asset(
+            'assets/StudyBuddies_logo.png',
+            height: 200,
+          ),
 
+          const SizedBox(height: 30),
+          if (successMessage != null)
+            Container(
+              margin: const EdgeInsets.only(bottom: 20),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1E1E1E),
+                border: Border.all(
+                  color: Colors.green,
+                  width: 1,
+                ),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(
+                    Icons.check_circle_outline,
+                    color: Colors.green,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      successMessage!,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 13,
+                        height: 1.5,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+          if (formError != null)
+            Container(
+              margin: const EdgeInsets.only(bottom: 20),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1E1E1E),
+                border: Border.all(
+                  color: Colors.red,
+                  width: 1,
+                ),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(
+                    Icons.error_outline,
+                    color: Colors.red,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      formError!,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 13,
+                        height: 1.5,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            
+          const Text(
+            'Email',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+              fontStyle: FontStyle.italic,
+            ),
+          ),
+          
           TextField(
             controller: emailController,
 
-            keyboardType:
-                TextInputType.emailAddress,
+            keyboardType: TextInputType.emailAddress,
 
-            decoration: const InputDecoration(
-              labelText: 'Email',
+            style: const TextStyle(
+              color: Colors.black,
+              fontSize: 14,
+            ),
+
+            decoration: InputDecoration(
+              hintText: 'Enter your email',
+              hintStyle: const TextStyle(
+                color: Colors.grey,
+                fontSize: 14,
+              ),
+              filled: true,
+              fillColor: Colors.white,
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 10,
+              ),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(20),
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 8),
+
+          const Text(
+            'Password',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+              fontStyle: FontStyle.italic,
             ),
           ),
 
@@ -195,51 +277,93 @@ class _LoginScreenState extends State<LoginScreen> {
           TextField(
             controller: passwordController,
 
-            obscureText: true,
+            obscureText: !isPasswordVisible,
+            
+            style: const TextStyle(
+              color: Colors.black,
+              fontSize: 14,
+            ),
 
-            decoration: const InputDecoration(
-              labelText: 'Password',
+            decoration: InputDecoration(
+              hintText: 'Enter your password',
+              hintStyle: const TextStyle(
+                color: Colors.grey,
+                fontSize: 14,
+              ),
+              filled: true,
+              fillColor: Colors.white,
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 10,
+              ),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(20),
+              ),
+              suffixIcon: IconButton(
+                icon: Icon(
+                  isPasswordVisible
+                      ? Icons.visibility
+                      : Icons.visibility_off,
+                  color: Colors.grey,
+                  size: 18,
+                ),
+                onPressed: () {
+                  setState(() {
+                    isPasswordVisible = !isPasswordVisible;
+                  });
+                },
+              ),
             ),
           ),
 
-
-          const SizedBox(height: 12),
-
+          const SizedBox(height: 60),
 
           ElevatedButton(
-
             onPressed:
                 isLoading ? null : login,
 
             child: Text(
-              isLoading
-                  ? 'Logging in...'
-                  : 'Login',
+              isLoading ? 'Logging in...' : 'Login',
+              style: const TextStyle( color: Colors.black, ),
             ),
           ),
 
-
           const SizedBox(height: 12),
 
-
           Center(
-
-            child: GestureDetector(
-
-              onTap: () {
-
-                Navigator.push(
-                  context,
-
-                  MaterialPageRoute(
-                    builder: (context) =>
-                        const RegisterScreen(),
+            child: RichText(
+              text: TextSpan(
+                children: [
+                  const TextSpan(
+                    text: "Don't have an account? ",
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                    ),
                   ),
-                );
-              },
-
-              child: const Text(
-                "Don't have an account? Sign up",
+                  WidgetSpan(
+                    alignment: PlaceholderAlignment.baseline,
+                    baseline: TextBaseline.alphabetic,
+                    child: GestureDetector(
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const RegisterScreen(),
+                          ),
+                        );
+                      },
+                      child: const Text(
+                        'Sign up',
+                        style: TextStyle(
+                          color: Colors.blue,
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
@@ -248,3 +372,4 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 }
+

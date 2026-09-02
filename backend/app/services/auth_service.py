@@ -1,4 +1,4 @@
-from app.schemas.auth import LoginResponse, UserResponse
+from app.schemas.auth import LoginResponse, UserResponse, RegisterResponse
 from app.services.supabase_service import get_supabase_client
 
 
@@ -27,15 +27,6 @@ def login_with_password(
         access_token=response.session.access_token,
         refresh_token=response.session.refresh_token,
     )
-
-from app.schemas.auth import (
-    LoginResponse,
-    RegisterResponse,
-    UserResponse,
-)
-
-from app.services.supabase_service import get_supabase_client
-
 
 def login_with_password(
     email: str,
@@ -92,3 +83,20 @@ def signup_with_email(
             email=response.user.email,
         ),
     )
+
+
+def check_email_available(email: str) -> bool:
+    supabase = get_supabase_client(use_service_role=True)
+
+    response = supabase.auth.admin.list_users()
+
+    users = response
+
+    if hasattr(response, "users"):
+        users = response.users
+
+    for user in users:
+        if user.email and user.email.lower() == email.lower():
+            return False
+
+    return True
