@@ -65,6 +65,38 @@ class _RegisterScreenState extends State<RegisterScreen> {
     });
 
     try {
+      final checkResponse = await http.post(
+        Uri.parse(
+          'http://10.0.2.2:8000/auth/check-email',
+        ),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'email': email,
+        }),
+      );
+
+      if (!mounted) return;
+
+      if (checkResponse.statusCode == 409) {
+        setState(() {
+          formError =
+              '• This email is already registered.';
+          isLoading = false;
+        });
+        return;
+      }
+
+      if (checkResponse.statusCode != 200) {
+        setState(() {
+          formError =
+              '• Could not check email. Please try again.';
+          isLoading = false;
+        });
+        return;
+      }
+
       final response = await http.post(
         Uri.parse(
           'http://10.0.2.2:8000/auth/register',
