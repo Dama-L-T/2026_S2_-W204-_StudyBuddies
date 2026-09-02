@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routes import health, schedule
+from app.routes import auth, health, schedule
 
 app = FastAPI(title="StudyBuddies API")
 
@@ -15,3 +15,4 @@ app.add_middleware(
 
 app.include_router(health.router)
 app.include_router(schedule.router)
+app.include_router(auth.router)

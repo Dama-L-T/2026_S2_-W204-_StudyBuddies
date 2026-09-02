@@ -1,7 +1,87 @@
+
+# ============================================================
+# Backend - Python / FastAPI
+# ============================================================
+
+backend/.env
+backend/.venv/
+backend/venv/
+backend/env/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Python packaging
+*.egg-info/
+dist/
+build/
+
+# Testing / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# ============================================================
+# Frontend - Flutter / Dart
+# ============================================================
+
+frontend/.dart_tool/
+frontend/.packages
+frontend/.pub-cache/
+frontend/build/
+frontend/.flutter-plugins
+frontend/.flutter-plugins-dependencies
+frontend/.flutter_tool_state
+
+# Flutter generated files
+frontend/.metadata
+
+# Android generated files
+frontend/android/.gradle/
+frontend/android/app/debug/
+frontend/android/app/profile/
+frontend/android/app/release/
+frontend/android/.cxx/
+
+# iOS generated files
+frontend/ios/Pods/
+frontend/ios/.symlinks/
+frontend/ios/Flutter/ephemeral/
+frontend/ios/Flutter/.last_build_id
+
+# ============================================================
+# IDE / Editor
+# ============================================================
+
+.vscode/
+.idea/
+*.iml
+
+# ============================================================
+# OS files
+# ============================================================
+
+# Windows
+Thumbs.db
+Desktop.ini
+
 # macOS
 .DS_Store
 
-# Environment and secrets
+# ============================================================
+# Logs
+# ============================================================
+
+*.log
+
+# ============================================================
+# Secrets / Environment files
+# ============================================================
+
 .env
 .env.*
 !.env.example
