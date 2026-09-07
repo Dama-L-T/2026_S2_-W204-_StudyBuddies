@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import '../widgets/app_bar.dart';
 
 class StudyItem {
   const StudyItem({
@@ -83,7 +84,7 @@ class _SchedulerScreenState extends State<SchedulerScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Scheduler')),
+      appBar: const AppBarWidget(title: 'Scheduler'),
       body: FutureBuilder<List<StudyItem>>(
         future: _scheduleItems,
         builder: (context, snapshot) {
