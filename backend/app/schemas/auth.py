@@ -25,3 +25,6 @@ class LoginResponse(BaseModel):
 class RegisterResponse(BaseModel):
     message: str
     user: UserResponse
+
+class CheckEmailRequest(BaseModel):
+    email: str
