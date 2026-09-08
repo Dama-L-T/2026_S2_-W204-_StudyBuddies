@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import 'register_screen.dart';
 import '../Schedule/schedule.page.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class LoginScreen extends StatefulWidget {
   final String? successMessage;
@@ -23,6 +24,8 @@ class _LoginScreenState extends State<LoginScreen> {
   final emailController = TextEditingController();
   final passwordController = TextEditingController();
   final baseUrl = dotenv.env['API_BASE_URL']!;
+  final storage = const FlutterSecureStorage();
+  bool rememberMe = false;  
   bool isLoading = false;
   bool isPasswordVisible = false;
   String? formError;
@@ -79,6 +82,21 @@ class _LoginScreenState extends State<LoginScreen> {
       if (!mounted) return;
 
       if (response.statusCode == 200) {
+        if (rememberMe) {
+          await storage.write(
+            key: 'remembered_email',
+            value: email,
+          );
+
+          await storage.write(
+            key: 'remembered_password',
+            value: password,
+          );
+        } else {
+          await storage.delete(key: 'remembered_email');
+          await storage.delete(key: 'remembered_password');
+        }
+
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
@@ -112,9 +130,26 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  Future<void> _loadSavedLogin() async {
+    final savedEmail = await storage.read(key: 'remembered_email');
+    final savedPassword = await storage.read(key: 'remembered_password');
+
+    if (!mounted) return;
+
+    if (savedEmail != null && savedPassword != null) {
+      setState(() {
+        emailController.text = savedEmail;
+        passwordController.text = savedPassword;
+        rememberMe = true;
+      });
+    }
+  }
+
   @override
   void initState() {
     super.initState();
+
+    _loadSavedLogin();
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (widget.successMessage != null && mounted) {
@@ -144,6 +179,8 @@ class _LoginScreenState extends State<LoginScreen> {
         ),
 
         children: [
+          const SizedBox(height: 40),
+
           Image.asset(
             'assets/StudyBuddies_logo.png',
             height: 200,
@@ -312,8 +349,45 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
             ),
           ),
+          
+          Row(
+            children: [
+              Checkbox(
+                value: rememberMe,
+                onChanged: (value) async {
+                  final isChecked = value ?? false;
 
-          const SizedBox(height: 60),
+                  setState(() {
+                    rememberMe = isChecked;
+                  });
+
+                  if (!isChecked) {
+                    await storage.delete(key: 'remembered_email');
+                    await storage.delete(key: 'remembered_password');
+                  }
+                },
+                side: const BorderSide(color: Colors.white),
+                checkColor: Colors.black,
+                fillColor: WidgetStateProperty.resolveWith(
+                  (states) {
+                    if (states.contains(WidgetState.selected)) {
+                      return Colors.white;
+                    }
+                    return Colors.transparent;
+                  },
+                ),
+              ),
+              const Text(
+                'Remember me',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 20),
 
           ElevatedButton(
             onPressed:
@@ -325,7 +399,7 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
           ),
 
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
 
           Center(
             child: RichText(
