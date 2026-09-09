@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../auth/login_screen.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class AppBarWidget extends StatelessWidget implements PreferredSizeWidget {
   const AppBarWidget({
@@ -11,8 +12,8 @@ class AppBarWidget extends StatelessWidget implements PreferredSizeWidget {
   final String title;
   final bool showBackButton;
 
-  void _logout(BuildContext context) {
-    showDialog(
+  Future<void> _logout(BuildContext context) async {
+    final shouldLogout = await showDialog<bool>(
       context: context,
       builder: (context) {
         return AlertDialog(
@@ -21,27 +22,38 @@ class AppBarWidget extends StatelessWidget implements PreferredSizeWidget {
           actions: [
             TextButton(
               onPressed: () {
-                Navigator.pop(context);
+                Navigator.pop(context, false);
               },
               child: const Text('Cancel'),
             ),
             TextButton(
               onPressed: () {
-                Navigator.pop(context);
-
-                Navigator.pushAndRemoveUntil(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const LoginScreen(),
-                  ),
-                  (route) => false,
-                );
+                Navigator.pop(context, true);
               },
               child: const Text('Logout'),
             ),
           ],
         );
       },
+    );
+
+    if (shouldLogout != true) return;
+
+    // Remove Stay Logged In session
+    const storage = FlutterSecureStorage();
+
+    await storage.delete(
+      key: 'access_token',
+    );
+
+    if (!context.mounted) return;
+
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const LoginScreen(),
+      ),
+      (route) => false,
     );
   }
 
