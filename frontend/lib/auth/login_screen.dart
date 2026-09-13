@@ -82,6 +82,11 @@ class _LoginScreenState extends State<LoginScreen> {
       if (!mounted) return;
 
       if (response.statusCode == 200) {
+        await storage.write(
+          key: 'access_token',
+          value: data['access_token'],
+        );
+
         if (rememberMe) {
           await storage.write(
             key: 'remembered_email',
