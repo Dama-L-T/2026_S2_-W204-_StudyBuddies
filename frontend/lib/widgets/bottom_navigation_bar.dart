@@ -3,7 +3,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 
 import '../Schedule/schedule.page.dart';
-// import matchmaking, communication, and profile pages when they are implemented
+// import matchmaking, communication, profile, and settings pages when implemented
 
 class AppBottomNavigationBar extends StatefulWidget {
   const AppBottomNavigationBar({
@@ -36,17 +36,24 @@ class _AppBottomNavigationBarState
         accessToken: widget.accessToken,
       ),
 
-      // Replace the following placeholders with actual pages when they are implemented
+      // Replace with actual Matchmaking page
       const Center(
         child: Text('Matchmaking Page'),
       ),
 
+      // Replace with actual Communication page
       const Center(
         child: Text('Communication Page'),
       ),
 
+      // Replace with actual Profile page
       const Center(
         child: Text('Profile Page'),
+      ),
+
+      // Replace with actual Settings page
+      const Center(
+        child: Text('Settings Page'),
       ),
     ];
   }
@@ -65,7 +72,7 @@ class _AppBottomNavigationBarState
           bottom: 12,
         ),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(35),
+          borderRadius: BorderRadius.circular(30),
           child: BackdropFilter(
             filter: ImageFilter.blur(
               sigmaX: 15,
@@ -77,7 +84,7 @@ class _AppBottomNavigationBarState
                 // Clear frosted glass
                 color: Colors.white.withValues(alpha: 0.45),
 
-                borderRadius: BorderRadius.circular(35),
+                borderRadius: BorderRadius.circular(30),
 
                 // Soft shadow
                 boxShadow: [
@@ -88,30 +95,39 @@ class _AppBottomNavigationBarState
                   ),
                 ],
               ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  _buildNavItem(
-                    index: 0,
-                    icon: Icons.calendar_month,
-                    label: 'Schedule',
+              child: Center(
+                child: SizedBox(
+                  width: 325,
+                  child: Row(
+                    children: [
+                      _buildNavItem(
+                        index: 0,
+                        icon: Icons.calendar_month,
+                        label: 'Schedule',
+                      ),
+                      _buildNavItem(
+                        index: 1,
+                        icon: Icons.people,
+                        label: 'Match',
+                      ),
+                      _buildNavItem(
+                        index: 2,
+                        icon: Icons.chat,
+                        label: 'Chat',
+                      ),
+                      _buildNavItem(
+                        index: 3,
+                        icon: Icons.person,
+                        label: 'Profile',
+                      ),
+                      _buildNavItem(
+                        index: 4,
+                        icon: Icons.settings,
+                        label: 'Settings',
+                      ),
+                    ],
                   ),
-                  _buildNavItem(
-                    index: 1,
-                    icon: Icons.people,
-                    label: 'Match',
-                  ),
-                  _buildNavItem(
-                    index: 2,
-                    icon: Icons.chat,
-                    label: 'Chat',
-                  ),
-                  _buildNavItem(
-                    index: 3,
-                    icon: Icons.person,
-                    label: 'Profile',
-                  ),
-                ],
+                ),
               ),
             ),
           ),
@@ -137,10 +153,8 @@ class _AppBottomNavigationBarState
         child: Center(
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 200),
-            padding: const EdgeInsets.symmetric(
-              horizontal: 12,
-              vertical: 5,
-            ),
+            width: 65,
+            height: 50,
             decoration: BoxDecoration(
               color: isSelected
                   ? Colors.black.withValues(alpha: 0.15)
@@ -148,25 +162,21 @@ class _AppBottomNavigationBarState
               borderRadius: BorderRadius.circular(25),
             ),
             child: Column(
-              mainAxisSize: MainAxisSize.min,
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Icon(
                   icon,
                   color: Colors.black,
-                  size: 24,
+                  size: 22,
                 ),
-
-                const SizedBox(height: 2),
-
+                const SizedBox(height: 1),
                 Text(
                   label,
                   style: TextStyle(
                     color: Colors.black,
-                    fontSize: 12,
-                    fontWeight: isSelected
-                        ? FontWeight.bold
-                        : FontWeight.normal,
+                    fontSize: 11,
+                    fontWeight:
+                        isSelected ? FontWeight.bold : FontWeight.normal,
                   ),
                 ),
               ],
