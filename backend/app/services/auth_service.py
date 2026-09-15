@@ -6,7 +6,6 @@ def login_with_password(
     email: str,
     password: str,
 ) -> LoginResponse:
-
     supabase = get_supabase_client()
 
     response = supabase.auth.sign_in_with_password(
@@ -28,22 +27,14 @@ def login_with_password(
         refresh_token=response.session.refresh_token,
     )
 
-def login_with_password(
-    email: str,
-    password: str,
-) -> LoginResponse:
 
+def refresh_access_token(refresh_token: str) -> LoginResponse:
     supabase = get_supabase_client()
 
-    response = supabase.auth.sign_in_with_password(
-        {
-            "email": email,
-            "password": password,
-        }
-    )
+    response = supabase.auth.refresh_session(refresh_token)
 
     if response.user is None or response.session is None:
-        raise ValueError("Invalid email or password")
+        raise ValueError("Invalid refresh token")
 
     return LoginResponse(
         user=UserResponse(

@@ -1,8 +1,11 @@
+import logging
+
 from fastapi import APIRouter, HTTPException
 
 from app.schemas.auth import (
     LoginRequest,
     LoginResponse,
+    RefreshRequest,
     RegisterRequest,
     RegisterResponse,
     CheckEmailRequest,
@@ -10,6 +13,7 @@ from app.schemas.auth import (
 
 from app.services.auth_service import (
     login_with_password,
+    refresh_access_token,
     signup_with_email,
     check_email_available,
 )
@@ -19,6 +23,7 @@ router = APIRouter(
     prefix="/auth",
     tags=["authentication"],
 )
+logger = logging.getLogger(__name__)
 
 
 @router.post(
@@ -34,12 +39,29 @@ def login(request: LoginRequest):
         )
 
     except Exception as error:
-
-        print(repr(error))
+        logger.exception("Login failed")
 
         raise HTTPException(
             status_code=401,
             detail="Invalid email or password",
+        ) from error
+
+
+@router.post(
+    "/refresh",
+    response_model=LoginResponse,
+)
+def refresh(request: RefreshRequest):
+
+    try:
+        return refresh_access_token(request.refresh_token)
+
+    except Exception as error:
+        logger.exception("Token refresh failed")
+
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid refresh token",
         ) from error
 
 
@@ -57,8 +79,7 @@ def register(request: RegisterRequest):
         )
 
     except Exception as error:
-
-        print(repr(error))
+        logger.exception("Registration failed")
 
         raise HTTPException(
             status_code=400,
@@ -86,7 +107,7 @@ def check_email(request: CheckEmailRequest):
         raise
 
     except Exception as error:
-        print("CHECK EMAIL ERROR:", repr(error))
+        logger.exception("Email availability check failed")
 
         raise HTTPException(
             status_code=500,
