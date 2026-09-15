@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
-import '../auth/login_screen.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+
+import '../auth/login_screen.dart';
 
 class AppBarWidget extends StatelessWidget implements PreferredSizeWidget {
   const AppBarWidget({
@@ -40,19 +41,16 @@ class AppBarWidget extends StatelessWidget implements PreferredSizeWidget {
     if (shouldLogout != true) return;
 
     // Remove Stay Logged In session
-    const storage = FlutterSecureStorage();
+    final storage = FlutterSecureStorage();
 
-    await storage.delete(
-      key: 'access_token',
-    );
+    await storage.delete(key: 'access_token');
+    await storage.delete(key: 'refresh_token');
 
     if (!context.mounted) return;
 
     Navigator.pushAndRemoveUntil(
       context,
-      MaterialPageRoute(
-        builder: (context) => const LoginScreen(),
-      ),
+      MaterialPageRoute(builder: (context) => const LoginScreen()),
       (route) => false,
     );
   }
