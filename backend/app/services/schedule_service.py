@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from app.config import get_settings
-from app.schemas.schedule import ScheduleItem, ScheduleItemCreate
+from app.schemas.schedule import ScheduleItem, ScheduleItemCreate, ScheduleItemUpdate
 from app.services.supabase_service import get_supabase_client
 
 
@@ -42,6 +42,71 @@ def create_schedule_item(
             access_token=access_token,
             user_id=user_id,
         )
+
+    raise ValueError("item_type must be Assignment or Event")
+
+
+def update_schedule_item(
+    item_type: str,
+    item_id: int,
+    payload: ScheduleItemUpdate,
+    access_token: str | None = None,
+) -> ScheduleItem:
+    if get_settings().schedule_mock_json:
+        raise ValueError("Cannot update schedule items while mock schedule JSON is enabled")
+
+    user_id = _require_user_id(access_token)
+    normalized_type = item_type.strip().lower()
+
+    if normalized_type == "assignment":
+        return _update_assignment(
+            item_id,
+            payload,
+            access_token=access_token,
+            user_id=user_id,
+        )
+
+    if normalized_type == "event":
+        return _update_event(
+            item_id,
+            payload,
+            access_token=access_token,
+            user_id=user_id,
+        )
+
+    raise ValueError("item_type must be Assignment or Event")
+
+
+def delete_schedule_item(
+    item_type: str,
+    item_id: int,
+    access_token: str | None = None,
+) -> None:
+    if get_settings().schedule_mock_json:
+        raise ValueError("Cannot delete schedule items while mock schedule JSON is enabled")
+
+    user_id = _require_user_id(access_token)
+    normalized_type = item_type.strip().lower()
+
+    if normalized_type == "assignment":
+        _delete_item(
+            table=get_settings().assignment_table,
+            id_field="assignment_id",
+            item_id=item_id,
+            access_token=access_token,
+            user_id=user_id,
+        )
+        return
+
+    if normalized_type == "event":
+        _delete_item(
+            table=get_settings().event_table,
+            id_field="event_id",
+            item_id=item_id,
+            access_token=access_token,
+            user_id=user_id,
+        )
+        return
 
     raise ValueError("item_type must be Assignment or Event")
 
@@ -131,7 +196,7 @@ def _create_assignment(
         "title": payload.title.strip(),
         "due_date": due_date.isoformat(),
         "priority": _assignment_priority(due_date),
-        "status": "pending",
+        "status": _assignment_status(payload.is_completed),
     }
 
     rows = (
@@ -176,6 +241,102 @@ def _create_event(
     return _event_from_row(rows[0] if rows else row)
 
 
+def _update_assignment(
+    item_id: int,
+    payload: ScheduleItemUpdate,
+    access_token: str,
+    user_id: str,
+) -> ScheduleItem:
+    settings = get_settings()
+    supabase = get_supabase_client()
+    supabase.postgrest.auth(access_token)
+    due_date = _compose_datetime(payload.date, payload.time)
+
+    row = {
+        "title": payload.title.strip(),
+        "due_date": due_date.isoformat(),
+        "priority": _assignment_priority(due_date),
+        "status": _assignment_status(payload.is_completed),
+        "updated_at": datetime.now().isoformat(),
+    }
+
+    rows = (
+        supabase.table(settings.assignment_table)
+        .update(row)
+        .eq("assignment_id", item_id)
+        .eq(settings.user_id_field, user_id)
+        .execute()
+        .data
+        or []
+    )
+
+    if not rows:
+        raise LookupError("Assignment not found")
+
+    return _assignment_from_row(rows[0])
+
+
+def _update_event(
+    item_id: int,
+    payload: ScheduleItemUpdate,
+    access_token: str,
+    user_id: str,
+) -> ScheduleItem:
+    settings = get_settings()
+    supabase = get_supabase_client()
+    supabase.postgrest.auth(access_token)
+    start_time = _compose_datetime(payload.date, payload.time)
+    end_time = start_time + timedelta(hours=1)
+
+    row = {
+        "title": payload.title.strip(),
+        "location": payload.location.strip() or None,
+        "start_time": start_time.isoformat(),
+        "end_time": end_time.isoformat(),
+        "updated_at": datetime.now().isoformat(),
+    }
+
+    rows = (
+        supabase.table(settings.event_table)
+        .update(row)
+        .eq("event_id", item_id)
+        .eq(settings.user_id_field, user_id)
+        .execute()
+        .data
+        or []
+    )
+
+    if not rows:
+        raise LookupError("Event not found")
+
+    return _event_from_row(rows[0])
+
+
+def _delete_item(
+    table: str,
+    id_field: str,
+    item_id: int,
+    access_token: str,
+    user_id: str,
+) -> None:
+    settings = get_settings()
+    supabase = get_supabase_client()
+    supabase.postgrest.auth(access_token)
+
+    rows = (
+        supabase.table(table)
+        .delete()
+        .eq(id_field, item_id)
+        .eq(settings.user_id_field, user_id)
+        .execute()
+        .data
+        or []
+    )
+
+    if not rows:
+        raise LookupError("Schedule item not found")
+
+
 def _assignment_from_row(row: dict[str, Any]) -> ScheduleItem:
     return ScheduleItem(
         id=str(row.get("assignment_id") or row.get("id") or ""),
@@ -184,6 +345,7 @@ def _assignment_from_row(row: dict[str, Any]) -> ScheduleItem:
         date=_date_part(row.get("due_date")),
         time=_time_part(row.get("due_date")) or "Due date",
         location="Not applicable",
+        status=str(row.get("status") or "pending"),
     )
 
 
@@ -195,6 +357,7 @@ def _event_from_row(row: dict[str, Any]) -> ScheduleItem:
         date=_date_part(row.get("start_time")),
         time=_event_time(row),
         location=str(row.get("location") or row.get("description") or "Location TBC"),
+        status="",
     )
 
 
@@ -218,6 +381,10 @@ def _assignment_priority(due_date: datetime) -> str:
         return "medium"
 
     return "low"
+
+
+def _assignment_status(is_completed: bool) -> str:
+    return "completed" if is_completed else "pending"
 
 
 def _date_part(value: Any) -> str:

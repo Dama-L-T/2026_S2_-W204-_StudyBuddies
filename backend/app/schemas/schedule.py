@@ -8,6 +8,7 @@ class ScheduleItem(BaseModel):
     date: str
     time: str
     location: str
+    status: str = ""
 
 
 class ScheduleItemCreate(BaseModel):
@@ -16,3 +17,12 @@ class ScheduleItemCreate(BaseModel):
     date: str
     time: str
     location: str = ""
+    is_completed: bool = False
+
+
+class ScheduleItemUpdate(BaseModel):
+    title: str
+    date: str
+    time: str
+    location: str = ""
+    is_completed: bool = False
