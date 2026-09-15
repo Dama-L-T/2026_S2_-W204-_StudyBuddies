@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, BackgroundTasks
 
 from app.schemas.auth import (
     LoginRequest,
@@ -6,12 +6,17 @@ from app.schemas.auth import (
     RegisterRequest,
     RegisterResponse,
     CheckEmailRequest,
+    LoginOTPRequiredResponse,
+    ResendLoginOTPRequest,
+    VerifyLoginOTPRequest,
 )
 
 from app.services.auth_service import (
     login_with_password,
     signup_with_email,
     check_email_available,
+    resend_login_otp,
+    verify_login_otp,
 )
 
 
@@ -21,27 +26,90 @@ router = APIRouter(
 )
 
 
+# ---------------------------------------------------------
+# Login
+# ---------------------------------------------------------
+
 @router.post(
     "/login",
-    response_model=LoginResponse,
+    response_model=LoginOTPRequiredResponse,
 )
-def login(request: LoginRequest):
+def login(
+    request: LoginRequest,
+    background_tasks: BackgroundTasks,
+):
 
     try:
         return login_with_password(
             request.email,
             request.password,
+            background_tasks,
+        )
+
+    except Exception as error:
+        import traceback
+
+        print("LOGIN ERROR:", repr(error))
+        traceback.print_exc()
+
+        raise HTTPException(
+            status_code=401,
+            detail=str(error),
+        ) from error
+
+#---------------------------------------------------------
+# Resend Login OTP
+#---------------------------------------------------------
+@router.post("/resend-login-otp")
+def resend_login_otp_route(
+    request: ResendLoginOTPRequest,
+    background_tasks: BackgroundTasks,
+):
+    try:
+        return resend_login_otp(
+            request.email,
+            background_tasks,
+        )
+    except Exception as error:
+        print("RESEND LOGIN OTP ERROR:", repr(error))
+
+        raise HTTPException(
+            status_code=400,
+            detail=str(error),
+        ) from error
+
+    
+# ---------------------------------------------------------
+# Verify Login OTP
+# ---------------------------------------------------------
+
+@router.post(
+    "/verify-login-otp",
+    response_model=LoginResponse,
+)
+def verify_login_otp_endpoint(
+    request: VerifyLoginOTPRequest,
+):
+
+    try:
+        return verify_login_otp(
+            request.email,
+            request.otp,
         )
 
     except Exception as error:
 
-        print(repr(error))
+        print("LOGIN OTP ERROR:", repr(error))
 
         raise HTTPException(
             status_code=401,
-            detail="Invalid email or password",
+            detail=str(error),
         ) from error
 
+
+# ---------------------------------------------------------
+# Register
+# ---------------------------------------------------------
 
 @router.post(
     "/register",
@@ -53,12 +121,11 @@ def register(request: RegisterRequest):
         return signup_with_email(
             request.email,
             request.password,
-            request.name,
         )
 
     except Exception as error:
 
-        print(repr(error))
+        print("REGISTER ERROR:", repr(error))
 
         raise HTTPException(
             status_code=400,
@@ -66,8 +133,13 @@ def register(request: RegisterRequest):
         ) from error
 
 
+# ---------------------------------------------------------
+# Check Email
+# ---------------------------------------------------------
+
 @router.post("/check-email")
 def check_email(request: CheckEmailRequest):
+
     try:
         available = check_email_available(request.email)
 

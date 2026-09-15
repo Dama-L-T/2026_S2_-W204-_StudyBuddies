@@ -2,9 +2,9 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'register_screen.dart';
+import 'login_otp_screen.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import '../widgets/bottom_navigation_bar.dart';
 
 class LoginScreen extends StatefulWidget {
   final String? successMessage;
@@ -15,19 +15,19 @@ class LoginScreen extends StatefulWidget {
   });
 
   @override
-  State<LoginScreen> createState() =>
-      _LoginScreenState();
+  State<LoginScreen> createState() => _LoginScreenState();
 }
-
 
 class _LoginScreenState extends State<LoginScreen> {
   final emailController = TextEditingController();
   final passwordController = TextEditingController();
   final baseUrl = dotenv.env['API_BASE_URL']!;
   final storage = const FlutterSecureStorage();
+
   bool rememberMe = false;  
   bool isLoading = false;
   bool isPasswordVisible = false;
+
   String? formError;
   String? successMessage;
 
@@ -64,76 +64,83 @@ class _LoginScreenState extends State<LoginScreen> {
     try {
       final response = await http.post(
         Uri.parse('$baseUrl/auth/login'),
-
         headers: {
           'Content-Type': 'application/json',
         },
-
         body: jsonEncode({
           'email': email,
           'password': password,
         }),
       );
 
-      final data = jsonDecode(
-        response.body,
-      );
+      final data = jsonDecode(response.body);
 
       if (!mounted) return;
 
       if (response.statusCode == 200) {
-        await storage.write(
-          key: 'access_token',
-          value: data['access_token'],
-        );
+        // Login is successful, but the backend now requires OTP.
+        if (data['otp_required'] == true) {
+          // Remember email/password if Remember Me is selected.
+          if (rememberMe) {
+            await storage.write(
+              key: 'remembered_email',
+              value: email,
+            );
 
-        if (rememberMe) {
-          await storage.write(
-            key: 'remembered_email',
-            value: email,
-          );
+            await storage.write(
+              key: 'remembered_password',
+              value: password,
+            );
+          } else {
+            await storage.delete(key: 'remembered_email');
+            await storage.delete(key: 'remembered_password');
+          }
 
-          await storage.write(
-            key: 'remembered_password',
-            value: password,
-          );
-        } else {
-          await storage.delete(key: 'remembered_email');
-          await storage.delete(key: 'remembered_password');
-        }
+          if (!mounted) return;
 
-        if (!mounted) return;
-
-        Navigator.pushReplacement(
+          await Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) => AppBottomNavigationBar(
-              apiBaseUrl: baseUrl,
-              accessToken: data['access_token'],
+              builder: (context) => LoginOtpScreen(
+                email: data['email'] as String,
             ),
           ),
         );
 
-      } else {
+          if (!mounted) return;
+
           setState(() {
-            formError = '• Invalid email or password';
+            isLoading = false;
           });
+
+          return;
         }
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'Could not connect to server: $e',
-          ),
-        ),
-      );
-    } finally {
-      if (mounted) {
+
+        // Unexpected successful response.
         setState(() {
+          formError = '• Unexpected response from server';
+          isLoading = false;
+        });
+      } else {
+        String errorMessage = 'Invalid email or password';
+
+        if (data is Map<String, dynamic> &&
+            data['detail'] != null) {
+          errorMessage = data['detail'].toString();
+        }
+
+        setState(() {
+          formError = '• $errorMessage';
           isLoading = false;
         });
       }
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        formError = '• Could not connect to server';
+        isLoading = false;
+      });
     }
   }
 
@@ -178,7 +185,6 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
-
       body: ListView(
         padding: const EdgeInsets.symmetric(
           horizontal: 40,
@@ -397,12 +403,18 @@ class _LoginScreenState extends State<LoginScreen> {
           const SizedBox(height: 20),
 
           ElevatedButton(
-            onPressed:
-                isLoading ? null : login,
-
+            onPressed: isLoading ? null : login,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.blue,
+              disabledBackgroundColor: Colors.blue,
+            ),
             child: Text(
-              isLoading ? 'Logging in...' : 'Login',
-              style: const TextStyle( color: Colors.black, ),
+              isLoading ? 'Checking credentials...' : 'Login',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 15,
+                fontWeight: FontWeight.bold,
+              ),
             ),
           ),
 
