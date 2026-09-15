@@ -3,7 +3,7 @@ import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import 'auth/login_screen.dart';
-import 'Schedule/schedule.page.dart';
+import 'widgets/bottom_navigation_bar.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -34,7 +34,8 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final baseUrl = dotenv.env['API_BASE_URL']!;
-    
+    final token = accessToken;
+
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'Study Buddies',
@@ -42,10 +43,10 @@ class MyApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.teal),
         useMaterial3: true,
       ),
-      home: accessToken != null
-          ? SchedulerScreen(
+      home: token != null
+          ? AppBottomNavigationBar(
               apiBaseUrl: baseUrl,
-              accessToken: accessToken,
+              accessToken: token,
             )
           : const LoginScreen(),
     );
