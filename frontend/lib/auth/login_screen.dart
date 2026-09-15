@@ -2,9 +2,9 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'register_screen.dart';
-import '../Schedule/schedule.page.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import '../widgets/bottom_navigation_bar.dart';
 
 class LoginScreen extends StatefulWidget {
   final String? successMessage;
@@ -85,7 +85,7 @@ class _LoginScreenState extends State<LoginScreen> {
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
-            builder: (context) => SchedulerScreen(
+            builder: (context) => AppBottomNavigationBar(
               apiBaseUrl: baseUrl,
               accessToken: data['access_token'],
               refreshToken: data['refresh_token'],
