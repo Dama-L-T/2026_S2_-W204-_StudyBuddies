@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'register_screen.dart';
 import 'login_otp_screen.dart';
+import '../widgets/bottom_navigation_bar.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
@@ -78,24 +79,23 @@ class _LoginScreenState extends State<LoginScreen> {
       if (!mounted) return;
 
       if (response.statusCode == 200) {
+        // Remember email/password if Remember Me is selected.
+        if (rememberMe) {
+          await storage.write(
+            key: 'remembered_email',
+            value: email,
+          );
+
+          await storage.write(
+            key: 'remembered_password',
+            value: password,
+          );
+        } else {
+          await storage.delete(key: 'remembered_email');
+          await storage.delete(key: 'remembered_password');
+        }
         // Login is successful, but the backend now requires OTP.
         if (data['otp_required'] == true) {
-          // Remember email/password if Remember Me is selected.
-          if (rememberMe) {
-            await storage.write(
-              key: 'remembered_email',
-              value: email,
-            );
-
-            await storage.write(
-              key: 'remembered_password',
-              value: password,
-            );
-          } else {
-            await storage.delete(key: 'remembered_email');
-            await storage.delete(key: 'remembered_password');
-          }
-
           if (!mounted) return;
 
           await Navigator.push(
@@ -116,11 +116,45 @@ class _LoginScreenState extends State<LoginScreen> {
           return;
         }
 
-        // Unexpected successful response.
-        setState(() {
-          formError = '• Unexpected response from server';
-          isLoading = false;
-        });
+        // ---------------------------------------------------------
+        // OTP disabled → login directly
+        // ---------------------------------------------------------
+
+        final accessToken = data['access_token'];
+        final refreshToken = data['refresh_token'];
+
+        if (accessToken == null || refreshToken == null) {
+          setState(() {
+            formError = '• No login session was returned';
+            isLoading = false;
+          });
+          return;
+        }
+
+        await storage.write(
+          key: 'access_token',
+          value: accessToken,
+        );
+
+        await storage.write(
+          key: 'refresh_token',
+          value: refreshToken,
+        );
+
+        if (!mounted) return;
+
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(
+            builder: (_) => AppBottomNavigationBar(
+              apiBaseUrl: baseUrl,
+              accessToken: accessToken,
+            ),
+          ),
+          (route) => false,
+        );
+
+        return;
       } else {
         String errorMessage = 'Invalid email or password';
 

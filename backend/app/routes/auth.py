@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, BackgroundTasks
+from fastapi import APIRouter, HTTPException, BackgroundTasks, Depends
 
 from app.schemas.auth import (
     LoginRequest,
@@ -6,9 +6,11 @@ from app.schemas.auth import (
     RegisterRequest,
     RegisterResponse,
     CheckEmailRequest,
-    LoginOTPRequiredResponse,
+    LoginResponseOrOTP,
     ResendLoginOTPRequest,
     VerifyLoginOTPRequest,
+    LoginOTPSettingRequest,
+    LoginOTPSettingResponse,
 )
 
 from app.services.auth_service import (
@@ -17,8 +19,11 @@ from app.services.auth_service import (
     check_email_available,
     resend_login_otp,
     verify_login_otp,
+    get_login_otp_setting,
+    update_login_otp_setting,
 )
 
+from app.services.auth_dependency import get_current_user_id
 
 router = APIRouter(
     prefix="/auth",
@@ -32,7 +37,7 @@ router = APIRouter(
 
 @router.post(
     "/login",
-    response_model=LoginOTPRequiredResponse,
+    response_model=LoginResponseOrOTP,
 )
 def login(
     request: LoginRequest,
@@ -162,5 +167,69 @@ def check_email(request: CheckEmailRequest):
 
         raise HTTPException(
             status_code=500,
+            detail=str(error),
+        ) from error
+
+
+#---------------------------------------------------------
+# Get Login OTP Setting
+#---------------------------------------------------------
+
+@router.get(
+    "/login-otp-setting",
+    response_model=LoginOTPSettingResponse,
+)
+def get_login_otp_setting_route(
+    user_id: str = Depends(get_current_user_id),
+):
+    try:
+        enabled = get_login_otp_setting(user_id)
+
+        return {
+            "enabled": enabled,
+        }
+
+    except Exception as error:
+        print(
+            "GET LOGIN OTP SETTING ERROR:",
+            repr(error),
+        )
+
+        raise HTTPException(
+            status_code=400,
+            detail=str(error),
+        ) from error
+
+
+#---------------------------------------------------------
+# Update Login OTP Setting
+#---------------------------------------------------------
+
+@router.put(
+    "/login-otp-setting",
+    response_model=LoginOTPSettingResponse,
+)
+def update_login_otp_setting_route(
+    request: LoginOTPSettingRequest,
+    user_id: str = Depends(get_current_user_id),
+):
+    try:
+        enabled = update_login_otp_setting(
+            user_id,
+            request.enabled,
+        )
+
+        return {
+            "enabled": enabled,
+        }
+
+    except Exception as error:
+        print(
+            "UPDATE LOGIN OTP SETTING ERROR:",
+            repr(error),
+        )
+
+        raise HTTPException(
+            status_code=400,
             detail=str(error),
         ) from error

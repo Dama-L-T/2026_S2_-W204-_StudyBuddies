@@ -28,6 +28,30 @@ def login_with_password(
     if response.user is None or response.session is None:
         raise ValueError("Invalid email or password")
 
+    user_id = response.user.id
+
+    # Check whether this user requires login verification.
+    otp_enabled = get_login_otp_setting(user_id)
+
+    # ---------------------------------------------------------
+    # OTP disabled
+    # ---------------------------------------------------------
+
+    if not otp_enabled:
+        return {
+            "otp_required": False,
+            "user": {
+                "id": response.user.id,
+                "email": response.user.email,
+            },
+            "access_token": response.session.access_token,
+            "refresh_token": response.session.refresh_token,
+        }
+
+    # ---------------------------------------------------------
+    # OTP enabled
+    # ---------------------------------------------------------
+
     _pending_logins[email] = {
         "user_id": response.user.id,
         "email": response.user.email,
@@ -40,7 +64,7 @@ def login_with_password(
     otp = otp_service.create_otp(
         email=email,
         purpose="login",
-        user_id=response.user.id,
+        user_id=user_id,
     )
 
     background_tasks.add_task(
@@ -174,3 +198,48 @@ def check_email_available(email: str) -> bool:
             return False
 
     return True
+
+
+
+def get_login_otp_setting(user_id: str) -> bool:
+    supabase = get_supabase_client(use_service_role=True)
+
+    response = (
+        supabase
+        .table("user_settings")
+        .select("login_otp_enabled")
+        .eq("user_id", user_id)
+        .execute()
+    )
+
+    if not response or not response.data:
+        return False
+
+    return response.data[0]["login_otp_enabled"]
+
+
+def update_login_otp_setting(
+    user_id: str,
+    enabled: bool,
+) -> bool:
+
+    supabase = get_supabase_client(
+        use_service_role=True
+    )
+
+    response = (
+        supabase
+        .table("user_settings")
+        .upsert({
+            "user_id": user_id,
+            "login_otp_enabled": enabled,
+        })
+        .execute()
+    )
+
+    if not response.data:
+        raise ValueError(
+            "Unable to update login verification setting."
+        )
+
+    return response.data[0]["login_otp_enabled"]

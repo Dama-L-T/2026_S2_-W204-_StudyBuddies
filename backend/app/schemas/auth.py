@@ -6,10 +6,19 @@ class LoginRequest(BaseModel):
     password: str
 
 
-class LoginOTPRequiredResponse(BaseModel):
+class UserResponse(BaseModel):
+    id: str
+    email: str | None
+
+
+class LoginResponseOrOTP(BaseModel):
     otp_required: bool
-    message: str
-    email: str
+    message: str | None = None
+    email: str | None = None
+
+    user: UserResponse | None = None
+    access_token: str | None = None
+    refresh_token: str | None = None
 
 
 class ResendLoginOTPRequest(BaseModel):
@@ -26,11 +35,6 @@ class RegisterRequest(BaseModel):
     password: str
 
 
-class UserResponse(BaseModel):
-    id: str
-    email: str | None
-
-
 class LoginResponse(BaseModel):
     user: UserResponse
     access_token: str
@@ -44,3 +48,11 @@ class RegisterResponse(BaseModel):
 
 class CheckEmailRequest(BaseModel):
     email: str
+
+
+class LoginOTPSettingRequest(BaseModel):
+    enabled: bool
+
+
+class LoginOTPSettingResponse(BaseModel):
+    enabled: bool
