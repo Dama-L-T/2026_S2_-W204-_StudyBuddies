@@ -172,6 +172,7 @@ class _LoginOtpScreenState extends State<LoginOtpScreen> {
             builder: (_) => AppBottomNavigationBar(
               apiBaseUrl: _baseUrl,
               accessToken: accessToken,
+              refreshToken: refreshToken,
             ),
           ),
           (route) => false,

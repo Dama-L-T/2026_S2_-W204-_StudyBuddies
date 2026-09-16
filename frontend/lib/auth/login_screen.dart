@@ -143,6 +143,7 @@ class _LoginScreenState extends State<LoginScreen> {
             builder: (_) => AppBottomNavigationBar(
               apiBaseUrl: baseUrl,
               accessToken: accessToken,
+              refreshToken: refreshToken,
             ),
           ),
           (route) => false,

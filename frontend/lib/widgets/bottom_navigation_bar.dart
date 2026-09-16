@@ -11,10 +11,12 @@ class AppBottomNavigationBar extends StatefulWidget {
     super.key,
     required this.apiBaseUrl,
     required this.accessToken,
+    required this.refreshToken,
   });
 
   final String apiBaseUrl;
   final String accessToken;
+  final String refreshToken;
 
   @override
   State<AppBottomNavigationBar> createState() =>
