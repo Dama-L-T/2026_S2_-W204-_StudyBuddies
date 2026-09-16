@@ -121,3 +121,7 @@ frontend/android/local.properties
 
 # Logs
 *.log
+
+# Local dev shortcuts
+/Makefile
+/scripts/dev_ios.sh

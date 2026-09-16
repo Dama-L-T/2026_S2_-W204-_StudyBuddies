@@ -1,8 +1,12 @@
+import logging
+
+from fastapi import APIRouter, HTTPException
 from fastapi import APIRouter, HTTPException, BackgroundTasks, Depends
 
 from app.schemas.auth import (
     LoginRequest,
     LoginResponse,
+    RefreshRequest,
     RegisterRequest,
     RegisterResponse,
     CheckEmailRequest,
@@ -15,6 +19,7 @@ from app.schemas.auth import (
 
 from app.services.auth_service import (
     login_with_password,
+    refresh_access_token,
     signup_with_email,
     check_email_available,
     resend_login_otp,
@@ -29,6 +34,7 @@ router = APIRouter(
     prefix="/auth",
     tags=["authentication"],
 )
+logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------
@@ -113,6 +119,28 @@ def verify_login_otp_endpoint(
 
 
 # ---------------------------------------------------------
+# Refresh Token
+# ---------------------------------------------------------
+
+@router.post(
+    "/refresh",
+    response_model=LoginResponse,
+)
+def refresh(request: RefreshRequest):
+
+    try:
+        return refresh_access_token(request.refresh_token)
+
+    except Exception as error:
+        logger.exception("Token refresh failed")
+
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid refresh token",
+        ) from error
+
+
+# ---------------------------------------------------------
 # Register
 # ---------------------------------------------------------
 
@@ -163,7 +191,7 @@ def check_email(request: CheckEmailRequest):
         raise
 
     except Exception as error:
-        print("CHECK EMAIL ERROR:", repr(error))
+        logger.exception("Email availability check failed")
 
         raise HTTPException(
             status_code=500,

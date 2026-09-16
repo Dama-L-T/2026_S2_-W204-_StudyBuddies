@@ -8,7 +8,6 @@ from fastapi import BackgroundTasks
 # Value: Supabase access/refresh tokens + user information
 _pending_logins: dict[str, dict] = {}
 
-
 def login_with_password(
     email: str,
     password: str,
@@ -153,6 +152,24 @@ def verify_login_otp(
     del _pending_logins[email]
 
     return login_response
+
+
+def refresh_access_token(refresh_token: str) -> LoginResponse:
+    supabase = get_supabase_client()
+
+    response = supabase.auth.refresh_session(refresh_token)
+
+    if response.user is None or response.session is None:
+        raise ValueError("Invalid refresh token")
+
+    return LoginResponse(
+        user=UserResponse(
+            id=response.user.id,
+            email=response.user.email,
+        ),
+        access_token=response.session.access_token,
+        refresh_token=response.session.refresh_token,
+    )
 
 
 def signup_with_email(

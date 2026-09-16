@@ -8,3 +8,11 @@ class ScheduleItem(BaseModel):
     date: str
     time: str
     location: str
+
+
+class ScheduleItemCreate(BaseModel):
+    item_type: str
+    title: str
+    date: str
+    time: str
+    location: str = ""

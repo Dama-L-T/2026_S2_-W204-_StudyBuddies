@@ -131,15 +131,9 @@ class _LoginScreenState extends State<LoginScreen> {
           return;
         }
 
-        await storage.write(
-          key: 'access_token',
-          value: accessToken,
-        );
+        await storage.write(key: 'access_token', value: accessToken);
 
-        await storage.write(
-          key: 'refresh_token',
-          value: refreshToken,
-        );
+        await storage.write(key: 'refresh_token', value: refreshToken);
 
         if (!mounted) return;
 

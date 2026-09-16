@@ -15,6 +15,7 @@ class Settings:
     supabase_service_role_key: str
     assignment_table: str
     event_table: str
+    user_id_field: str
     schedule_mock_json: str
     environment: str
 
@@ -35,8 +36,9 @@ def get_settings() -> Settings:
         supabase_url=getenv("SUPABASE_URL", ""),
         supabase_anon_key=getenv("SUPABASE_ANON_KEY", ""),
         supabase_service_role_key=getenv("SUPABASE_SERVICE_ROLE_KEY", ""),
-        assignment_table=getenv("ASSIGNMENT_TABLE", "Assignment"),
-        event_table=getenv("EVENT_TABLE", "Event"),
+        assignment_table=getenv("ASSIGNMENT_TABLE", "assignments"),
+        event_table=getenv("EVENT_TABLE", "schedule"),
+        user_id_field=getenv("USER_ID_FIELD", "user_id"),
         schedule_mock_json=getenv("SCHEDULE_MOCK_JSON", ""),
         environment=getenv("ENVIRONMENT", "development"),
         brevo_smtp_host=getenv("BREVO_SMTP_HOST", "smtp-relay.brevo.com"),
