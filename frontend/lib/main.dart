@@ -40,6 +40,7 @@ class MyApp extends StatelessWidget {
           ? AppBottomNavigationBar(
               apiBaseUrl: baseUrl,
               accessToken: token,
+              refreshToken: refreshToken,
             )
           : const LoginScreen(),
     );

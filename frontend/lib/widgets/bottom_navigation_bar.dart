@@ -10,18 +10,18 @@ class AppBottomNavigationBar extends StatefulWidget {
     super.key,
     required this.apiBaseUrl,
     required this.accessToken,
+    this.refreshToken,
   });
 
   final String apiBaseUrl;
   final String accessToken;
+  final String? refreshToken;
 
   @override
-  State<AppBottomNavigationBar> createState() =>
-      _AppBottomNavigationBarState();
+  State<AppBottomNavigationBar> createState() => _AppBottomNavigationBarState();
 }
 
-class _AppBottomNavigationBarState
-    extends State<AppBottomNavigationBar> {
+class _AppBottomNavigationBarState extends State<AppBottomNavigationBar> {
   int currentIndex = 0;
 
   late final List<Widget> pages;
@@ -34,27 +34,20 @@ class _AppBottomNavigationBarState
       SchedulerScreen(
         apiBaseUrl: widget.apiBaseUrl,
         accessToken: widget.accessToken,
+        refreshToken: widget.refreshToken,
       ),
 
       // Replace with actual Matchmaking page
-      const Center(
-        child: Text('Matchmaking Page'),
-      ),
+      const Center(child: Text('Matchmaking Page')),
 
       // Replace with actual Communication page
-      const Center(
-        child: Text('Communication Page'),
-      ),
+      const Center(child: Text('Communication Page')),
 
       // Replace with actual Profile page
-      const Center(
-        child: Text('Profile Page'),
-      ),
+      const Center(child: Text('Profile Page')),
 
       // Replace with actual Settings page
-      const Center(
-        child: Text('Settings Page'),
-      ),
+      const Center(child: Text('Settings Page')),
     ];
   }
 
@@ -66,18 +59,11 @@ class _AppBottomNavigationBarState
       body: pages[currentIndex],
 
       bottomNavigationBar: Container(
-        margin: const EdgeInsets.only(
-          left: 12,
-          right: 12,
-          bottom: 12,
-        ),
+        margin: const EdgeInsets.only(left: 12, right: 12, bottom: 12),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(30),
           child: BackdropFilter(
-            filter: ImageFilter.blur(
-              sigmaX: 15,
-              sigmaY: 15,
-            ),
+            filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
             child: Container(
               height: 60,
               decoration: BoxDecoration(
@@ -110,11 +96,7 @@ class _AppBottomNavigationBarState
                         icon: Icons.people,
                         label: 'Match',
                       ),
-                      _buildNavItem(
-                        index: 2,
-                        icon: Icons.chat,
-                        label: 'Chat',
-                      ),
+                      _buildNavItem(index: 2, icon: Icons.chat, label: 'Chat'),
                       _buildNavItem(
                         index: 3,
                         icon: Icons.person,
@@ -164,19 +146,16 @@ class _AppBottomNavigationBarState
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(
-                  icon,
-                  color: Colors.black,
-                  size: 22,
-                ),
+                Icon(icon, color: Colors.black, size: 22),
                 const SizedBox(height: 1),
                 Text(
                   label,
                   style: TextStyle(
                     color: Colors.black,
                     fontSize: 11,
-                    fontWeight:
-                        isSelected ? FontWeight.bold : FontWeight.normal,
+                    fontWeight: isSelected
+                        ? FontWeight.bold
+                        : FontWeight.normal,
                   ),
                 ),
               ],
