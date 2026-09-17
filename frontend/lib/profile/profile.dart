@@ -1,11 +1,17 @@
 import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 class ProfilePage extends StatefulWidget {
-  const ProfilePage({super.key});
+  final String apiBaseUrl;
+  final String accessToken;
+
+  const ProfilePage({
+    super.key,
+    required this.apiBaseUrl,
+    required this.accessToken,
+  });
 
   @override
   State<ProfilePage> createState() => _ProfilePageState();
@@ -21,36 +27,46 @@ class _ProfilePageState extends State<ProfilePage> {
   final baseUrl = dotenv.env['API_BASE_URL']!;
 
   Future<void> saveProfile() async {
-  final response = await http.post(
-    Uri.parse('$baseUrl/profile/'),
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: jsonEncode({
-      'name': nameController.text,
-      'personal_details': personalDetailsController.text,
-      'courses': coursesController.text,
-      'interests': interestsController.text,
-      'preferences': preferencesController.text,
-    }),
-  );
-
-  if (!mounted) return;
-
-  if (response.statusCode == 200) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Profile saved!'),
-      ),
+    final response = await http.post(
+      Uri.parse('$baseUrl/profile/'),
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode({
+        'name': nameController.text,
+        'personal_details': personalDetailsController.text,
+        'courses': coursesController.text,
+        'interests': interestsController.text,
+        'preferences': preferencesController.text,
+      }),
     );
-  } else {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Failed to save profile.'),
-      ),
-    );
+
+    if (!mounted) return;
+
+    if (response.statusCode == 200) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Profile saved!'),
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Failed to save profile.'),
+        ),
+      );
+    }
   }
-}
+
+  @override
+  void dispose() {
+    nameController.dispose();
+    personalDetailsController.dispose();
+    coursesController.dispose();
+    interestsController.dispose();
+    preferencesController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -58,11 +74,14 @@ class _ProfilePageState extends State<ProfilePage> {
       appBar: AppBar(
         title: const Text('My Profile'),
       ),
+
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
+
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+
             const Text(
               'Create Your Profile',
               style: TextStyle(
@@ -81,6 +100,7 @@ class _ProfilePageState extends State<ProfilePage> {
                 fontSize: 18,
               ),
             ),
+
             TextField(
               controller: nameController,
               decoration: const InputDecoration(
@@ -98,6 +118,7 @@ class _ProfilePageState extends State<ProfilePage> {
                 fontSize: 18,
               ),
             ),
+
             TextField(
               controller: personalDetailsController,
               maxLines: 3,
@@ -116,6 +137,7 @@ class _ProfilePageState extends State<ProfilePage> {
                 fontSize: 18,
               ),
             ),
+
             TextField(
               controller: coursesController,
               decoration: const InputDecoration(
@@ -133,6 +155,7 @@ class _ProfilePageState extends State<ProfilePage> {
                 fontSize: 18,
               ),
             ),
+
             TextField(
               controller: interestsController,
               decoration: const InputDecoration(
@@ -150,6 +173,7 @@ class _ProfilePageState extends State<ProfilePage> {
                 fontSize: 18,
               ),
             ),
+
             TextField(
               controller: preferencesController,
               maxLines: 3,
@@ -163,6 +187,7 @@ class _ProfilePageState extends State<ProfilePage> {
             // SAVE BUTTON
             SizedBox(
               width: double.infinity,
+
               child: ElevatedButton(
                 onPressed: saveProfile,
                 child: const Text('Save Profile'),
@@ -174,3 +199,4 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 }
+

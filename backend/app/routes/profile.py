@@ -29,3 +29,4 @@ def get_profile(name: str):
         "message": "Profile requested",
         "name": name
     }
+
