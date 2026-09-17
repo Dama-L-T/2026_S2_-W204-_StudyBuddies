@@ -1,4 +1,5 @@
 import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -74,14 +75,11 @@ class _ProfilePageState extends State<ProfilePage> {
       appBar: AppBar(
         title: const Text('My Profile'),
       ),
-
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(20),
-
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-
             const Text(
               'Create Your Profile',
               style: TextStyle(
@@ -91,6 +89,21 @@ class _ProfilePageState extends State<ProfilePage> {
             ),
 
             const SizedBox(height: 25),
+
+            // PROFILE PICTURE PLACEHOLDER
+            Center(
+              child: CircleAvatar(
+                radius: 60,
+                backgroundColor: Colors.grey,
+                child: const Icon(
+                  Icons.person,
+                  size: 60,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 30),
 
             // NAME
             const Text(
@@ -187,7 +200,6 @@ class _ProfilePageState extends State<ProfilePage> {
             // SAVE BUTTON
             SizedBox(
               width: double.infinity,
-
               child: ElevatedButton(
                 onPressed: saveProfile,
                 child: const Text('Save Profile'),
