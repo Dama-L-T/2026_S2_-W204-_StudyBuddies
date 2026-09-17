@@ -1,8 +1,10 @@
 import 'dart:convert';
-
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:image_picker/image_picker.dart';
+
+import '../Schedule/schedule.page.dart';
 
 class ProfilePage extends StatefulWidget {
   final String apiBaseUrl;
@@ -25,35 +27,78 @@ class _ProfilePageState extends State<ProfilePage> {
   final interestsController = TextEditingController();
   final preferencesController = TextEditingController();
 
-  final baseUrl = dotenv.env['API_BASE_URL']!;
+  final ImagePicker imagePicker = ImagePicker();
 
-  Future<void> saveProfile() async {
-    final response = await http.post(
-      Uri.parse('$baseUrl/profile/'),
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: jsonEncode({
-        'name': nameController.text,
-        'personal_details': personalDetailsController.text,
-        'courses': coursesController.text,
-        'interests': interestsController.text,
-        'preferences': preferencesController.text,
-      }),
+  XFile? profileImage;
+
+  Future<void> selectProfilePicture() async {
+    final XFile? selectedImage = await imagePicker.pickImage(
+      source: ImageSource.gallery,
     );
+
+    if (selectedImage == null) {
+      return;
+    }
 
     if (!mounted) return;
 
-    if (response.statusCode == 200) {
+    setState(() {
+      profileImage = selectedImage;
+    });
+  }
+
+  Future<void> saveProfile() async {
+    if (nameController.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Profile saved!'),
+          content: Text('Please enter your name.'),
         ),
       );
-    } else {
+      return;
+    }
+
+    try {
+      final response = await http.post(
+        Uri.parse('${widget.apiBaseUrl}/profile/'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ${widget.accessToken}',
+        },
+        body: jsonEncode({
+          'name': nameController.text.trim(),
+          'personal_details': personalDetailsController.text.trim(),
+          'courses': coursesController.text.trim(),
+          'interests': interestsController.text.trim(),
+          'preferences': preferencesController.text.trim(),
+        }),
+      );
+
+      if (!mounted) return;
+
+      if (response.statusCode == 200) {
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(
+            builder: (context) => SchedulerScreen(
+              apiBaseUrl: widget.apiBaseUrl,
+              accessToken: widget.accessToken,
+            ),
+          ),
+          (route) => false,
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Failed to save profile.'),
+          ),
+        );
+      }
+    } catch (error) {
+      if (!mounted) return;
+
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Failed to save profile.'),
+          content: Text('Could not connect to the server.'),
         ),
       );
     }
@@ -66,6 +111,7 @@ class _ProfilePageState extends State<ProfilePage> {
     coursesController.dispose();
     interestsController.dispose();
     preferencesController.dispose();
+
     super.dispose();
   }
 
@@ -90,15 +136,52 @@ class _ProfilePageState extends State<ProfilePage> {
 
             const SizedBox(height: 25),
 
-            // PROFILE PICTURE PLACEHOLDER
+            // PROFILE PICTURE
             Center(
-              child: CircleAvatar(
-                radius: 60,
-                backgroundColor: Colors.grey,
-                child: const Icon(
-                  Icons.person,
-                  size: 60,
-                  color: Colors.white,
+              child: GestureDetector(
+                onTap: selectProfilePicture,
+                child: Stack(
+                  alignment: Alignment.bottomRight,
+                  children: [
+                    CircleAvatar(
+                      radius: 60,
+                      backgroundColor: Colors.grey,
+                      backgroundImage: profileImage != null
+                          ? FileImage(File(profileImage!.path))
+                          : null,
+                      child: profileImage == null
+                          ? const Icon(
+                              Icons.person,
+                              size: 60,
+                              color: Colors.white,
+                            )
+                          : null,
+                    ),
+
+                    Container(
+                      decoration: const BoxDecoration(
+                        color: Colors.teal,
+                        shape: BoxShape.circle,
+                      ),
+                      padding: const EdgeInsets.all(8),
+                      child: const Icon(
+                        Icons.camera_alt,
+                        color: Colors.white,
+                        size: 22,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 10),
+
+            const Center(
+              child: Text(
+                'Tap your picture to change it',
+                style: TextStyle(
+                  color: Colors.grey,
                 ),
               ),
             ),
@@ -154,7 +237,7 @@ class _ProfilePageState extends State<ProfilePage> {
             TextField(
               controller: coursesController,
               decoration: const InputDecoration(
-                hintText: 'ex. COMP602, COMP604',
+                hintText: 'e.g. COMP602, COMP604',
               ),
             ),
 
@@ -172,7 +255,7 @@ class _ProfilePageState extends State<ProfilePage> {
             TextField(
               controller: interestsController,
               decoration: const InputDecoration(
-                hintText: 'ex. Programming, AI, Cybersecurity',
+                hintText: 'e.g. Programming, AI, Cybersecurity',
               ),
             ),
 
@@ -191,7 +274,7 @@ class _ProfilePageState extends State<ProfilePage> {
               controller: preferencesController,
               maxLines: 3,
               decoration: const InputDecoration(
-                hintText: 'ex. Study preferences, group work, etc.',
+                hintText: 'e.g. Study preferences, group work, etc.',
               ),
             ),
 
@@ -211,4 +294,3 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 }
-

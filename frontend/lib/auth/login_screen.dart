@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'register_screen.dart';
 import '../Schedule/schedule.page.dart';
+import '../profile/profile.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -79,15 +80,51 @@ class _LoginScreenState extends State<LoginScreen> {
       if (!mounted) return;
 
       if (response.statusCode == 200) {
+        final accessToken = data['access_token'];
+
+    final profileResponse = await http.get(
+      Uri.parse('$baseUrl/profile/status'),
+      headers: {
+        'Authorization': 'Bearer $accessToken',
+      },
+    );
+
+    if (!mounted) return;
+
+    if (profileResponse.statusCode == 200) {
+      final profileData = jsonDecode(profileResponse.body);
+
+      final profileCompleted =
+          profileData['profile_completed'] == true;
+
+      if (profileCompleted) {
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
             builder: (context) => SchedulerScreen(
               apiBaseUrl: baseUrl,
-              accessToken: data['access_token'],
+              accessToken: accessToken,
             ),
           ),
         );
+      } else {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) => ProfilePage(
+              apiBaseUrl: baseUrl,
+              accessToken: accessToken,
+            ),
+          ),
+        );
+      }
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Could not check your profile.'),
+        ),
+      );
+    }
 
       } else {
           setState(() {
