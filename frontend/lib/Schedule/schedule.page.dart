@@ -69,6 +69,23 @@ class _SchedulerScreenState extends State<SchedulerScreen> {
     _scheduleItems = widget.scheduleItems ?? _fetchScheduleItems();
   }
 
+  @override
+  void didUpdateWidget(covariant SchedulerScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    if (oldWidget.accessToken == widget.accessToken &&
+        oldWidget.refreshToken == widget.refreshToken) {
+      return;
+    }
+
+    _accessToken = widget.accessToken;
+    _refreshToken = widget.refreshToken;
+
+    setState(() {
+      _scheduleItems = widget.scheduleItems ?? _fetchScheduleItems();
+    });
+  }
+
   Future<List<StudyItem>> _fetchScheduleItems() async {
     final uri = Uri.parse('${widget.apiBaseUrl}/schedule');
 
@@ -206,10 +223,24 @@ class _SchedulerScreenState extends State<SchedulerScreen> {
           }
 
           if (snapshot.hasError) {
-            return const _SchedulerMessage(
-              icon: Icons.error_outline,
-              title: 'Schedule unavailable',
-              message: 'Check that the FastAPI backend is running.',
+            return ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                const SizedBox(height: 120),
+                const _SchedulerMessage(
+                  icon: Icons.error_outline,
+                  title: 'Schedule unavailable',
+                  message: 'Check that the FastAPI backend is running.',
+                ),
+                const SizedBox(height: 24),
+                Center(
+                  child: FilledButton.icon(
+                    onPressed: _reloadScheduleItems,
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('Retry'),
+                  ),
+                ),
+              ],
             );
           }
 
@@ -311,6 +342,12 @@ class _SchedulerScreenState extends State<SchedulerScreen> {
         if (_accessToken != null) 'Authorization': 'Bearer $_accessToken',
       },
     );
+  }
+
+  void _reloadScheduleItems() {
+    setState(() {
+      _scheduleItems = _fetchScheduleItems();
+    });
   }
 }
 

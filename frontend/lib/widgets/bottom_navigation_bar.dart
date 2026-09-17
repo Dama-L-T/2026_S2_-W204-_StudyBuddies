@@ -27,6 +27,7 @@ class _AppBottomNavigationBarState extends State<AppBottomNavigationBar> {
   final _storage = FlutterSecureStorage();
 
   int currentIndex = 0;
+  int _schedulePageVersion = 0;
   late String _accessToken;
   late String _refreshToken;
 
@@ -123,6 +124,10 @@ class _AppBottomNavigationBarState extends State<AppBottomNavigationBar> {
 
           setState(() {
             currentIndex = index;
+
+            if (index == 0) {
+              _schedulePageVersion++;
+            }
           });
         },
         child: Center(
@@ -173,6 +178,7 @@ class _AppBottomNavigationBarState extends State<AppBottomNavigationBar> {
     switch (index) {
       case 0:
         return SchedulerScreen(
+          key: ValueKey(_schedulePageVersion),
           apiBaseUrl: widget.apiBaseUrl,
           accessToken: _accessToken,
           refreshToken: _refreshToken,
