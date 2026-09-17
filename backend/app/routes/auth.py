@@ -1,6 +1,5 @@
 import logging
 
-from fastapi import APIRouter, HTTPException
 from fastapi import APIRouter, HTTPException, BackgroundTasks, Depends
 
 from app.schemas.auth import (
@@ -15,6 +14,9 @@ from app.schemas.auth import (
     VerifyLoginOTPRequest,
     LoginOTPSettingRequest,
     LoginOTPSettingResponse,
+    ForgotPasswordRequest,
+VerifyResetOTPRequest,
+ResetPasswordRequest,
 )
 
 from app.services.auth_service import (
@@ -26,6 +28,9 @@ from app.services.auth_service import (
     verify_login_otp,
     get_login_otp_setting,
     update_login_otp_setting,
+    request_password_reset,
+verify_reset_otp,
+reset_password,
 )
 
 from app.services.auth_dependency import get_current_user_id
@@ -256,6 +261,76 @@ def update_login_otp_setting_route(
             "UPDATE LOGIN OTP SETTING ERROR:",
             repr(error),
         )
+
+        raise HTTPException(
+            status_code=400,
+            detail=str(error),
+        ) from error
+
+
+# ---------------------------------------------------------
+# Forgot Password
+# ---------------------------------------------------------
+
+@router.post("/forgot-password")
+def forgot_password(
+    request: ForgotPasswordRequest,
+    background_tasks: BackgroundTasks,
+):
+    try:
+        return request_password_reset(
+            request.email,
+            background_tasks,
+        )
+
+    except Exception as error:
+        logger.exception("FORGOT PASSWORD ERROR")
+
+        raise HTTPException(
+            status_code=400,
+            detail=str(error),
+        ) from error
+
+
+# ---------------------------------------------------------
+# Verify Password Reset OTP
+# ---------------------------------------------------------
+
+@router.post("/verify-reset-otp")
+def verify_reset_otp_endpoint(
+    request: VerifyResetOTPRequest,
+):
+    try:
+        return verify_reset_otp(
+            request.email,
+            request.otp,
+        )
+
+    except Exception as error:
+        logger.exception("RESET OTP ERROR")
+
+        raise HTTPException(
+            status_code=400,
+            detail=str(error),
+        ) from error
+
+
+# ---------------------------------------------------------
+# Reset Password
+# ---------------------------------------------------------
+
+@router.post("/reset-password")
+def reset_password_endpoint(
+    request: ResetPasswordRequest,
+):
+    try:
+        return reset_password(
+            request.email,
+            request.new_password,
+        )
+
+    except Exception as error:
+        logger.exception("RESET PASSWORD ERROR")
 
         raise HTTPException(
             status_code=400,
