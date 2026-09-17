@@ -1,6 +1,7 @@
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../Schedule/schedule.page.dart';
 // import matchmaking, communication, profile, and settings pages when implemented
@@ -10,45 +11,30 @@ class AppBottomNavigationBar extends StatefulWidget {
     super.key,
     required this.apiBaseUrl,
     required this.accessToken,
-    this.refreshToken,
+    required this.refreshToken,
   });
 
   final String apiBaseUrl;
   final String accessToken;
-  final String? refreshToken;
+  final String refreshToken;
 
   @override
   State<AppBottomNavigationBar> createState() => _AppBottomNavigationBarState();
 }
 
 class _AppBottomNavigationBarState extends State<AppBottomNavigationBar> {
-  int currentIndex = 0;
+  final _storage = FlutterSecureStorage();
 
-  late final List<Widget> pages;
+  int currentIndex = 0;
+  late String _accessToken;
+  late String _refreshToken;
 
   @override
   void initState() {
     super.initState();
 
-    pages = [
-      SchedulerScreen(
-        apiBaseUrl: widget.apiBaseUrl,
-        accessToken: widget.accessToken,
-        refreshToken: widget.refreshToken,
-      ),
-
-      // Replace with actual Matchmaking page
-      const Center(child: Text('Matchmaking Page')),
-
-      // Replace with actual Communication page
-      const Center(child: Text('Communication Page')),
-
-      // Replace with actual Profile page
-      const Center(child: Text('Profile Page')),
-
-      // Replace with actual Settings page
-      const Center(child: Text('Settings Page')),
-    ];
+    _accessToken = widget.accessToken;
+    _refreshToken = widget.refreshToken;
   }
 
   @override
@@ -56,7 +42,7 @@ class _AppBottomNavigationBarState extends State<AppBottomNavigationBar> {
     return Scaffold(
       extendBody: true,
 
-      body: pages[currentIndex],
+      body: _buildPage(currentIndex),
 
       bottomNavigationBar: Container(
         margin: const EdgeInsets.only(left: 12, right: 12, bottom: 12),
@@ -127,7 +113,13 @@ class _AppBottomNavigationBarState extends State<AppBottomNavigationBar> {
 
     return Expanded(
       child: GestureDetector(
-        onTap: () {
+        onTap: () async {
+          if (index == 0) {
+            await _loadStoredTokens();
+          }
+
+          if (!mounted) return;
+
           setState(() {
             currentIndex = index;
           });
@@ -164,5 +156,36 @@ class _AppBottomNavigationBarState extends State<AppBottomNavigationBar> {
         ),
       ),
     );
+  }
+
+  Future<void> _loadStoredTokens() async {
+    final accessToken = await _storage.read(key: 'access_token');
+    final refreshToken = await _storage.read(key: 'refresh_token');
+
+    if (accessToken == null || refreshToken == null) return;
+
+    _accessToken = accessToken;
+    _refreshToken = refreshToken;
+  }
+
+  Widget _buildPage(int index) {
+    switch (index) {
+      case 0:
+        return SchedulerScreen(
+          apiBaseUrl: widget.apiBaseUrl,
+          accessToken: _accessToken,
+          refreshToken: _refreshToken,
+        );
+      case 1:
+        return const Center(child: Text('Matchmaking Page'));
+      case 2:
+        return const Center(child: Text('Communication Page'));
+      case 3:
+        return const Center(child: Text('Profile Page'));
+      case 4:
+        return const Center(child: Text('Settings Page'));
+      default:
+        return const Center(child: Text('Page not found'));
+    }
   }
 }

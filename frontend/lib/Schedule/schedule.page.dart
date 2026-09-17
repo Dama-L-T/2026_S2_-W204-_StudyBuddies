@@ -198,11 +198,6 @@ class _SchedulerScreenState extends State<SchedulerScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: const AppBarWidget(title: 'Scheduler'),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _openAddScheduleItem,
-        icon: const Icon(Icons.add),
-        label: const Text('Add'),
-      ),
       body: FutureBuilder<List<StudyItem>>(
         future: _scheduleItems,
         builder: (context, snapshot) {
@@ -221,20 +216,39 @@ class _SchedulerScreenState extends State<SchedulerScreen> {
           final items = snapshot.data ?? [];
 
           if (items.isEmpty) {
-            return const _SchedulerMessage(
-              icon: Icons.event_available,
-              title: 'No upcoming study items',
-              message: 'Scheduled sessions will appear here when added.',
+            return ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                const SizedBox(height: 120),
+                const _SchedulerMessage(
+                  icon: Icons.event_available,
+                  title: 'No upcoming study items',
+                  message: 'Scheduled sessions will appear here when added.',
+                ),
+                const SizedBox(height: 24),
+                Center(
+                  child: _AddScheduleButton(onPressed: _openAddScheduleItem),
+                ),
+              ],
             );
           }
 
           return ListView.separated(
             padding: const EdgeInsets.all(16),
-            itemCount: items.length + 1,
+            itemCount: items.length + 2,
             separatorBuilder: (context, index) => const SizedBox(height: 12),
             itemBuilder: (context, index) {
               if (index == 0) {
                 return const _SchedulerHeader();
+              }
+
+              if (index == items.length + 1) {
+                return Center(
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 4, bottom: 80),
+                    child: _AddScheduleButton(onPressed: _openAddScheduleItem),
+                  ),
+                );
               }
 
               final item = items[index - 1];
@@ -808,6 +822,26 @@ class _SchedulerHeader extends StatelessWidget {
         ),
         const SizedBox(height: 6),
       ],
+    );
+  }
+}
+
+class _AddScheduleButton extends StatelessWidget {
+  const _AddScheduleButton({required this.onPressed});
+
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton.filled(
+      onPressed: onPressed,
+      icon: const Icon(Icons.add),
+      tooltip: 'Add schedule item',
+      iconSize: 28,
+      style: IconButton.styleFrom(
+        fixedSize: const Size.square(56),
+        shape: const CircleBorder(),
+      ),
     );
   }
 }

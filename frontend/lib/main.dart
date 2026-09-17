@@ -36,11 +36,11 @@ class MyApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.teal),
         useMaterial3: true,
       ),
-      home: token != null
+      home: token != null && refreshToken != null
           ? AppBottomNavigationBar(
               apiBaseUrl: baseUrl,
               accessToken: token,
-              refreshToken: refreshToken,
+              refreshToken: refreshToken!,
             )
           : const LoginScreen(),
     );
