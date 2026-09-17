@@ -27,7 +27,6 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final baseUrl = dotenv.env['API_BASE_URL']!;
-    final token = accessToken;
 
     return MaterialApp(
       debugShowCheckedModeBanner: false,
@@ -36,10 +35,10 @@ class MyApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.teal),
         useMaterial3: true,
       ),
-      home: token != null && refreshToken != null
+      home: accessToken != null && refreshToken != null
           ? AppBottomNavigationBar(
               apiBaseUrl: baseUrl,
-              accessToken: token,
+              accessToken: accessToken!,
               refreshToken: refreshToken!,
             )
           : const LoginScreen(),

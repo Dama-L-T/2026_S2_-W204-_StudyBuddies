@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../Schedule/schedule.page.dart';
+import '../Settings/settings.page.dart';
 // import matchmaking, communication, profile, and settings pages when implemented
 
 class AppBottomNavigationBar extends StatefulWidget {
@@ -183,7 +184,10 @@ class _AppBottomNavigationBarState extends State<AppBottomNavigationBar> {
       case 3:
         return const Center(child: Text('Profile Page'));
       case 4:
-        return const Center(child: Text('Settings Page'));
+        return SettingsPage(
+          apiBaseUrl: widget.apiBaseUrl,
+          accessToken: _accessToken,
+        );
       default:
         return const Center(child: Text('Page not found'));
     }
