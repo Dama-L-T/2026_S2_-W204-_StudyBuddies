@@ -1,6 +1,7 @@
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../Schedule/schedule.page.dart';
 import '../Settings/settings.page.dart';
@@ -19,47 +20,23 @@ class AppBottomNavigationBar extends StatefulWidget {
   final String refreshToken;
 
   @override
-  State<AppBottomNavigationBar> createState() =>
-      _AppBottomNavigationBarState();
+  State<AppBottomNavigationBar> createState() => _AppBottomNavigationBarState();
 }
 
-class _AppBottomNavigationBarState
-    extends State<AppBottomNavigationBar> {
-  int currentIndex = 0;
+class _AppBottomNavigationBarState extends State<AppBottomNavigationBar> {
+  final _storage = FlutterSecureStorage();
 
-  late final List<Widget> pages;
+  int currentIndex = 0;
+  int _schedulePageVersion = 0;
+  late String _accessToken;
+  late String _refreshToken;
 
   @override
   void initState() {
     super.initState();
 
-    pages = [
-      SchedulerScreen(
-        apiBaseUrl: widget.apiBaseUrl,
-        accessToken: widget.accessToken,
-      ),
-
-      // Replace with actual Matchmaking page
-      const Center(
-        child: Text('Matchmaking Page'),
-      ),
-
-      // Replace with actual Communication page
-      const Center(
-        child: Text('Communication Page'),
-      ),
-
-      // Replace with actual Profile page
-      const Center(
-        child: Text('Profile Page'),
-      ),
-
-      // Replace with actual Settings page
-      SettingsPage(
-        apiBaseUrl: widget.apiBaseUrl,
-        accessToken: widget.accessToken,
-      ),
-    ];
+    _accessToken = widget.accessToken;
+    _refreshToken = widget.refreshToken;
   }
 
   @override
@@ -67,21 +44,14 @@ class _AppBottomNavigationBarState
     return Scaffold(
       extendBody: true,
 
-      body: pages[currentIndex],
+      body: _buildPage(currentIndex),
 
       bottomNavigationBar: Container(
-        margin: const EdgeInsets.only(
-          left: 12,
-          right: 12,
-          bottom: 12,
-        ),
+        margin: const EdgeInsets.only(left: 12, right: 12, bottom: 12),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(30),
           child: BackdropFilter(
-            filter: ImageFilter.blur(
-              sigmaX: 15,
-              sigmaY: 15,
-            ),
+            filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
             child: Container(
               height: 60,
               decoration: BoxDecoration(
@@ -114,11 +84,7 @@ class _AppBottomNavigationBarState
                         icon: Icons.people,
                         label: 'Match',
                       ),
-                      _buildNavItem(
-                        index: 2,
-                        icon: Icons.chat,
-                        label: 'Chat',
-                      ),
+                      _buildNavItem(index: 2, icon: Icons.chat, label: 'Chat'),
                       _buildNavItem(
                         index: 3,
                         icon: Icons.person,
@@ -149,9 +115,19 @@ class _AppBottomNavigationBarState
 
     return Expanded(
       child: GestureDetector(
-        onTap: () {
+        onTap: () async {
+          if (index == 0) {
+            await _loadStoredTokens();
+          }
+
+          if (!mounted) return;
+
           setState(() {
             currentIndex = index;
+
+            if (index == 0) {
+              _schedulePageVersion++;
+            }
           });
         },
         child: Center(
@@ -168,19 +144,16 @@ class _AppBottomNavigationBarState
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(
-                  icon,
-                  color: Colors.black,
-                  size: 22,
-                ),
+                Icon(icon, color: Colors.black, size: 22),
                 const SizedBox(height: 1),
                 Text(
                   label,
                   style: TextStyle(
                     color: Colors.black,
                     fontSize: 11,
-                    fontWeight:
-                        isSelected ? FontWeight.bold : FontWeight.normal,
+                    fontWeight: isSelected
+                        ? FontWeight.bold
+                        : FontWeight.normal,
                   ),
                 ),
               ],
@@ -189,5 +162,40 @@ class _AppBottomNavigationBarState
         ),
       ),
     );
+  }
+
+  Future<void> _loadStoredTokens() async {
+    final accessToken = await _storage.read(key: 'access_token');
+    final refreshToken = await _storage.read(key: 'refresh_token');
+
+    if (accessToken == null || refreshToken == null) return;
+
+    _accessToken = accessToken;
+    _refreshToken = refreshToken;
+  }
+
+  Widget _buildPage(int index) {
+    switch (index) {
+      case 0:
+        return SchedulerScreen(
+          key: ValueKey(_schedulePageVersion),
+          apiBaseUrl: widget.apiBaseUrl,
+          accessToken: _accessToken,
+          refreshToken: _refreshToken,
+        );
+      case 1:
+        return const Center(child: Text('Matchmaking Page'));
+      case 2:
+        return const Center(child: Text('Communication Page'));
+      case 3:
+        return const Center(child: Text('Profile Page'));
+      case 4:
+        return SettingsPage(
+          apiBaseUrl: widget.apiBaseUrl,
+          accessToken: _accessToken,
+        );
+      default:
+        return const Center(child: Text('Page not found'));
+    }
   }
 }

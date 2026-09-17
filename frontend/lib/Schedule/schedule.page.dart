@@ -7,26 +7,32 @@ import '../widgets/app_bar.dart';
 
 class StudyItem {
   const StudyItem({
+    required this.id,
     required this.itemType,
     required this.title,
     required this.date,
     required this.time,
     required this.location,
+    required this.status,
   });
 
+  final String id;
   final String itemType;
   final String title;
   final String date;
   final String time;
   final String location;
+  final String status;
 
   factory StudyItem.fromJson(Map<String, dynamic> json) {
     return StudyItem(
+      id: json['id']?.toString() ?? '',
       itemType: json['item_type']?.toString() ?? 'Study item',
       title: json['title']?.toString() ?? 'Untitled study item',
       date: json['date']?.toString() ?? '',
       time: json['time']?.toString() ?? '',
       location: json['location']?.toString() ?? 'Location TBC',
+      status: json['status']?.toString() ?? '',
     );
   }
 }
@@ -61,6 +67,23 @@ class _SchedulerScreenState extends State<SchedulerScreen> {
     _accessToken = widget.accessToken;
     _refreshToken = widget.refreshToken;
     _scheduleItems = widget.scheduleItems ?? _fetchScheduleItems();
+  }
+
+  @override
+  void didUpdateWidget(covariant SchedulerScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    if (oldWidget.accessToken == widget.accessToken &&
+        oldWidget.refreshToken == widget.refreshToken) {
+      return;
+    }
+
+    _accessToken = widget.accessToken;
+    _refreshToken = widget.refreshToken;
+
+    setState(() {
+      _scheduleItems = widget.scheduleItems ?? _fetchScheduleItems();
+    });
   }
 
   Future<List<StudyItem>> _fetchScheduleItems() async {
@@ -110,15 +133,88 @@ class _SchedulerScreenState extends State<SchedulerScreen> {
     }
   }
 
+  Future<void> _openEditScheduleItem(StudyItem item) async {
+    final updated = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (context) => AddScheduleItemScreen(
+          apiBaseUrl: widget.apiBaseUrl,
+          accessToken: _accessToken,
+          refreshToken: _refreshToken,
+          item: item,
+        ),
+      ),
+    );
+
+    if (updated == true && mounted) {
+      _accessToken = await _storage.read(key: 'access_token');
+      _refreshToken = await _storage.read(key: 'refresh_token');
+
+      setState(() {
+        _scheduleItems = _fetchScheduleItems();
+      });
+    }
+  }
+
+  Future<void> _deleteScheduleItem(StudyItem item) async {
+    final shouldDelete = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Delete item'),
+          content: Text('Delete "${item.title}"?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Delete'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (shouldDelete != true) return;
+
+    var response = await _deleteScheduleItemRequest(item);
+
+    if (response.statusCode == 401 && await _refreshSession()) {
+      response = await _deleteScheduleItemRequest(item);
+    }
+
+    if (!mounted) return;
+
+    if (response.statusCode == 204) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Schedule item deleted')));
+
+      setState(() {
+        _scheduleItems = _fetchScheduleItems();
+      });
+      return;
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          _scheduleErrorMessage(
+            'Could not delete schedule item',
+            response.statusCode,
+            response.body,
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: const AppBarWidget(title: 'Scheduler'),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _openAddScheduleItem,
-        icon: const Icon(Icons.add),
-        label: const Text('Add'),
-      ),
       body: FutureBuilder<List<StudyItem>>(
         future: _scheduleItems,
         builder: (context, snapshot) {
@@ -127,34 +223,71 @@ class _SchedulerScreenState extends State<SchedulerScreen> {
           }
 
           if (snapshot.hasError) {
-            return const _SchedulerMessage(
-              icon: Icons.error_outline,
-              title: 'Schedule unavailable',
-              message: 'Check that the FastAPI backend is running.',
+            return ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                const SizedBox(height: 120),
+                const _SchedulerMessage(
+                  icon: Icons.error_outline,
+                  title: 'Schedule unavailable',
+                  message: 'Check that the FastAPI backend is running.',
+                ),
+                const SizedBox(height: 24),
+                Center(
+                  child: FilledButton.icon(
+                    onPressed: _reloadScheduleItems,
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('Retry'),
+                  ),
+                ),
+              ],
             );
           }
 
           final items = snapshot.data ?? [];
 
           if (items.isEmpty) {
-            return const _SchedulerMessage(
-              icon: Icons.event_available,
-              title: 'No upcoming study items',
-              message: 'Scheduled sessions will appear here when added.',
+            return ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                const SizedBox(height: 120),
+                const _SchedulerMessage(
+                  icon: Icons.event_available,
+                  title: 'No upcoming study items',
+                  message: 'Scheduled sessions will appear here when added.',
+                ),
+                const SizedBox(height: 24),
+                Center(
+                  child: _AddScheduleButton(onPressed: _openAddScheduleItem),
+                ),
+              ],
             );
           }
 
           return ListView.separated(
             padding: const EdgeInsets.all(16),
-            itemCount: items.length + 1,
+            itemCount: items.length + 2,
             separatorBuilder: (context, index) => const SizedBox(height: 12),
             itemBuilder: (context, index) {
               if (index == 0) {
                 return const _SchedulerHeader();
               }
 
+              if (index == items.length + 1) {
+                return Center(
+                  child: Padding(
+                    padding: const EdgeInsets.only(top: 4, bottom: 80),
+                    child: _AddScheduleButton(onPressed: _openAddScheduleItem),
+                  ),
+                );
+              }
+
               final item = items[index - 1];
-              return _StudyItemCard(item: item);
+              return _StudyItemCard(
+                item: item,
+                onEdit: () => _openEditScheduleItem(item),
+                onDelete: () => _deleteScheduleItem(item),
+              );
             },
           );
         },
@@ -199,6 +332,23 @@ class _SchedulerScreenState extends State<SchedulerScreen> {
 
     return true;
   }
+
+  Future<http.Response> _deleteScheduleItemRequest(StudyItem item) {
+    return http.delete(
+      Uri.parse(
+        '${widget.apiBaseUrl}/schedule/${item.itemType.toLowerCase()}/${item.id}',
+      ),
+      headers: {
+        if (_accessToken != null) 'Authorization': 'Bearer $_accessToken',
+      },
+    );
+  }
+
+  void _reloadScheduleItems() {
+    setState(() {
+      _scheduleItems = _fetchScheduleItems();
+    });
+  }
 }
 
 class ScheduleItemDraft {
@@ -208,6 +358,7 @@ class ScheduleItemDraft {
     required this.date,
     required this.time,
     required this.location,
+    required this.isCompleted,
   });
 
   final String itemType;
@@ -215,6 +366,7 @@ class ScheduleItemDraft {
   final DateTime date;
   final TimeOfDay time;
   final String location;
+  final bool isCompleted;
 
   Map<String, dynamic> toJson() {
     return {
@@ -223,6 +375,7 @@ class ScheduleItemDraft {
       'date': _dateForApi(date),
       'time': _timeForApi(time),
       'location': location,
+      'is_completed': isCompleted,
     };
   }
 }
@@ -233,11 +386,13 @@ class AddScheduleItemScreen extends StatefulWidget {
     required this.apiBaseUrl,
     this.accessToken,
     this.refreshToken,
+    this.item,
   });
 
   final String apiBaseUrl;
   final String? accessToken;
   final String? refreshToken;
+  final StudyItem? item;
 
   @override
   State<AddScheduleItemScreen> createState() => _AddScheduleItemScreenState();
@@ -253,6 +408,7 @@ class _AddScheduleItemScreenState extends State<AddScheduleItemScreen> {
   String _itemType = 'Event';
   DateTime _date = DateTime.now();
   TimeOfDay _time = TimeOfDay.now();
+  bool _isCompleted = false;
   bool _isLoading = false;
   String? _formError;
 
@@ -261,6 +417,21 @@ class _AddScheduleItemScreenState extends State<AddScheduleItemScreen> {
     super.initState();
     _accessToken = widget.accessToken;
     _refreshToken = widget.refreshToken;
+
+    final item = widget.item;
+
+    if (item != null) {
+      _itemType = item.itemType;
+      _titleController.text = item.title;
+
+      if (item.itemType == 'Event' && item.location != 'Location TBC') {
+        _locationController.text = item.location;
+      }
+
+      _date = DateTime.tryParse(item.date) ?? DateTime.now();
+      _time = _timeFromScheduleItem(item.time) ?? TimeOfDay.now();
+      _isCompleted = item.status.toLowerCase() == 'completed';
+    }
   }
 
   @override
@@ -274,10 +445,7 @@ class _AddScheduleItemScreenState extends State<AddScheduleItemScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
-      appBar: const AppBarWidget(
-        title: 'Add Schedule Item',
-        showBackButton: true,
-      ),
+      appBar: const AppBarWidget(title: 'Schedule Item', showBackButton: true),
       body: Form(
         key: _formKey,
         child: ListView(
@@ -334,17 +502,21 @@ class _AddScheduleItemScreenState extends State<AddScheduleItemScreen> {
                   child: Text('Assignment'),
                 ),
               ],
-              onChanged: (value) {
-                if (value != null) {
-                  setState(() {
-                    _itemType = value;
+              onChanged: widget.item == null
+                  ? (value) {
+                      if (value != null) {
+                        setState(() {
+                          _itemType = value;
 
-                    if (_itemType == 'Assignment') {
-                      _locationController.clear();
+                          if (_itemType == 'Assignment') {
+                            _locationController.clear();
+                          } else {
+                            _isCompleted = false;
+                          }
+                        });
+                      }
                     }
-                  });
-                }
-              },
+                  : null,
             ),
             const SizedBox(height: 12),
             const Text(
@@ -397,6 +569,23 @@ class _AddScheduleItemScreenState extends State<AddScheduleItemScreen> {
               icon: Icons.schedule,
               onTap: _pickTime,
             ),
+            if (_itemType == 'Assignment') ...[
+              const SizedBox(height: 12),
+              Material(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(20),
+                child: CheckboxListTile(
+                  value: _isCompleted,
+                  onChanged: (value) {
+                    setState(() {
+                      _isCompleted = value ?? false;
+                    });
+                  },
+                  title: const Text('Completed'),
+                  controlAffinity: ListTileControlAffinity.leading,
+                ),
+              ),
+            ],
             const SizedBox(height: 24),
             SizedBox(
               width: double.infinity,
@@ -417,7 +606,11 @@ class _AddScheduleItemScreenState extends State<AddScheduleItemScreen> {
                           width: 20,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
-                      : const Text('Add Schedule Item'),
+                      : Text(
+                          widget.item == null
+                              ? 'Add Schedule Item'
+                              : 'Save Changes',
+                        ),
                 ),
               ),
             ),
@@ -474,26 +667,31 @@ class _AddScheduleItemScreenState extends State<AddScheduleItemScreen> {
       date: _date,
       time: _time,
       location: _locationController.text.trim(),
+      isCompleted: _itemType == 'Assignment' && _isCompleted,
     );
 
     try {
-      var response = await _postScheduleItem(draft);
+      var response = await _saveScheduleItem(draft);
 
       if (response.statusCode == 401 && await _refreshSession()) {
-        response = await _postScheduleItem(draft);
+        response = await _saveScheduleItem(draft);
       }
 
       if (!mounted) return;
 
-      if (response.statusCode == 201) {
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        final message = widget.item == null
+            ? 'Schedule item added'
+            : 'Schedule item updated';
+
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(const SnackBar(content: Text('Schedule item added')));
+        ).showSnackBar(SnackBar(content: Text(message)));
         Navigator.pop(context, true);
       } else {
         setState(() {
           _formError =
-              '• ${_scheduleErrorMessage(response.statusCode, response.body)}';
+              '• ${_scheduleErrorMessage('Could not save schedule item', response.statusCode, response.body)}';
         });
       }
     } catch (e) {
@@ -510,14 +708,30 @@ class _AddScheduleItemScreenState extends State<AddScheduleItemScreen> {
     }
   }
 
-  Future<http.Response> _postScheduleItem(ScheduleItemDraft draft) {
-    return http.post(
-      Uri.parse('${widget.apiBaseUrl}/schedule'),
+  Future<http.Response> _saveScheduleItem(ScheduleItemDraft draft) {
+    final item = widget.item;
+    final uri = item == null
+        ? Uri.parse('${widget.apiBaseUrl}/schedule')
+        : Uri.parse(
+            '${widget.apiBaseUrl}/schedule/${item.itemType.toLowerCase()}/${item.id}',
+          );
+    final headers = {
+      'Content-Type': 'application/json',
+      if (_accessToken != null) 'Authorization': 'Bearer $_accessToken',
+    };
+    final body = jsonEncode(draft.toJson());
+
+    if (item == null) {
+      return http.post(uri, headers: headers, body: body);
+    }
+
+    return http.put(
+      uri,
       headers: {
         'Content-Type': 'application/json',
         if (_accessToken != null) 'Authorization': 'Bearer $_accessToken',
       },
-      body: jsonEncode(draft.toJson()),
+      body: body,
     );
   }
 
@@ -551,30 +765,6 @@ class _AddScheduleItemScreenState extends State<AddScheduleItemScreen> {
     _refreshToken = newRefreshToken;
 
     return true;
-  }
-
-  String _scheduleErrorMessage(int statusCode, String responseBody) {
-    try {
-      final decoded = jsonDecode(responseBody);
-
-      if (decoded is Map<String, dynamic>) {
-        final detail = decoded['detail']?.toString();
-
-        if (detail != null && detail.isNotEmpty) {
-          return detail;
-        }
-      }
-    } catch (_) {
-      // Fall through to the generic message when the backend did not return JSON.
-    }
-
-    final fallback = responseBody.trim();
-
-    if (fallback.isNotEmpty) {
-      return 'Could not add schedule item ($statusCode): $fallback';
-    }
-
-    return 'Could not add schedule item ($statusCode)';
   }
 }
 
@@ -673,10 +863,36 @@ class _SchedulerHeader extends StatelessWidget {
   }
 }
 
+class _AddScheduleButton extends StatelessWidget {
+  const _AddScheduleButton({required this.onPressed});
+
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton.filled(
+      onPressed: onPressed,
+      icon: const Icon(Icons.add),
+      tooltip: 'Add schedule item',
+      iconSize: 28,
+      style: IconButton.styleFrom(
+        fixedSize: const Size.square(56),
+        shape: const CircleBorder(),
+      ),
+    );
+  }
+}
+
 class _StudyItemCard extends StatelessWidget {
-  const _StudyItemCard({required this.item});
+  const _StudyItemCard({
+    required this.item,
+    required this.onEdit,
+    required this.onDelete,
+  });
 
   final StudyItem item;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
 
   @override
   Widget build(BuildContext context) {
@@ -693,16 +909,48 @@ class _StudyItemCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              item.title,
-              style: textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.w700,
-              ),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Text(
+                    item.title,
+                    style: textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  onPressed: onEdit,
+                  icon: const Icon(Icons.edit_outlined),
+                  tooltip: 'Edit',
+                ),
+                IconButton(
+                  onPressed: onDelete,
+                  icon: const Icon(Icons.delete_outline),
+                  tooltip: 'Delete',
+                ),
+              ],
             ),
             const SizedBox(height: 8),
-            Chip(
-              label: Text(item.itemType),
-              visualDensity: VisualDensity.compact,
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                Chip(
+                  label: Text(item.itemType),
+                  visualDensity: VisualDensity.compact,
+                ),
+                if (item.itemType == 'Assignment')
+                  Chip(
+                    label: Text(
+                      item.status.toLowerCase() == 'completed'
+                          ? 'Completed'
+                          : 'Pending',
+                    ),
+                    visualDensity: VisualDensity.compact,
+                  ),
+              ],
             ),
             const SizedBox(height: 12),
             _StudyItemDetail(
@@ -782,4 +1030,47 @@ String _timeForApi(TimeOfDay value) {
     value.hour.toString().padLeft(2, '0'),
     value.minute.toString().padLeft(2, '0'),
   ].join(':');
+}
+
+TimeOfDay? _timeFromScheduleItem(String value) {
+  final timeText = value.split(' - ').first.trim();
+  final parts = timeText.split(':');
+
+  if (parts.length < 2) return null;
+
+  final hour = int.tryParse(parts[0]);
+  final minute = int.tryParse(parts[1]);
+
+  if (hour == null || minute == null) return null;
+  if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
+
+  return TimeOfDay(hour: hour, minute: minute);
+}
+
+String _scheduleErrorMessage(
+  String fallbackMessage,
+  int statusCode,
+  String responseBody,
+) {
+  try {
+    final decoded = jsonDecode(responseBody);
+
+    if (decoded is Map<String, dynamic>) {
+      final detail = decoded['detail']?.toString();
+
+      if (detail != null && detail.isNotEmpty) {
+        return detail;
+      }
+    }
+  } catch (_) {
+    // Fall through to the generic message when the backend did not return JSON.
+  }
+
+  final fallback = responseBody.trim();
+
+  if (fallback.isNotEmpty) {
+    return '$fallbackMessage ($statusCode): $fallback';
+  }
+
+  return '$fallbackMessage ($statusCode)';
 }
