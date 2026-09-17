@@ -6,7 +6,12 @@ from fastapi import BackgroundTasks
 # Temporary storage for login sessions waiting for OTP verification.
 # Key: email
 # Value: Supabase access/refresh tokens + user information
+
 _pending_logins: dict[str, dict] = {}
+# Temporary storage for password reset sessions.
+# Key: email
+# Value: user_id + OTP verification status
+_pending_password_resets: dict[str, dict] = {}
 
 def login_with_password(
     email: str,
@@ -260,3 +265,145 @@ def update_login_otp_setting(
         )
 
     return response.data[0]["login_otp_enabled"]
+
+
+def request_password_reset(
+    email: str,
+    background_tasks: BackgroundTasks,
+):
+    email = email.strip().lower()
+
+    supabase = get_supabase_client(
+        use_service_role=True
+    )
+
+    # Find the user by email.
+    response = supabase.auth.admin.list_users()
+
+    users = response
+
+    if hasattr(response, "users"):
+        users = response.users
+
+    user = None
+
+    for existing_user in users:
+        if (
+            existing_user.email
+            and existing_user.email.lower() == email
+        ):
+            user = existing_user
+            break
+
+    if user is None:
+        # Don't reveal whether an email exists.
+        return {
+            "message": (
+                "If an account exists for this email, "
+                "a verification code has been sent."
+            ),
+            "email": email,
+        }
+
+    user_id = user.id
+
+    # Store pending password reset.
+    _pending_password_resets[email] = {
+        "user_id": user_id,
+        "email": email,
+        "verified": False,
+    }
+
+    otp_service = OTPService()
+
+    otp = otp_service.create_otp(
+        email=email,
+        purpose="reset_password",
+        user_id=user_id,
+    )
+
+    background_tasks.add_task(
+        otp_service.send_otp_email,
+        email,
+        otp,
+        "reset_password",
+    )
+
+    return {
+        "message": "A verification code has been sent to your email.",
+        "email": email,
+    }
+
+def verify_reset_otp(
+    email: str,
+    otp: str,
+):
+    email = email.strip().lower()
+
+    pending_reset = _pending_password_resets.get(email)
+
+    if pending_reset is None:
+        raise ValueError(
+            "No password reset request found. "
+            "Please request a new verification code."
+        )
+
+    otp_service = OTPService()
+
+    otp_service.verify_otp(
+        email=email,
+        purpose="reset_password",
+        otp=otp,
+    )
+
+    # OTP is correct.
+    pending_reset["verified"] = True
+
+    return {
+        "message": "Verification code confirmed.",
+        "email": email,
+    }
+
+def reset_password(
+    email: str,
+    new_password: str,
+):
+    email = email.strip().lower()
+
+    pending_reset = _pending_password_resets.get(email)
+
+    if pending_reset is None:
+        raise ValueError(
+            "No password reset request found."
+        )
+
+    if not pending_reset.get("verified"):
+        raise ValueError(
+            "Please verify the verification code first."
+        )
+
+    if len(new_password) < 8:
+        raise ValueError(
+            "Password must be at least 8 characters long."
+        )
+
+    supabase = get_supabase_client(
+        use_service_role=True
+    )
+
+    user_id = pending_reset["user_id"]
+
+    # Update the Supabase Auth password.
+    supabase.auth.admin.update_user_by_id(
+        user_id,
+        {
+            "password": new_password,
+        },
+    )
+
+    # Remove the reset session so it cannot be reused.
+    del _pending_password_resets[email]
+
+    return {
+        "message": "Password reset successfully.",
+    }
