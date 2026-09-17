@@ -2,14 +2,18 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'register_screen.dart';
+import 'login_otp_screen.dart';
+import '../widgets/bottom_navigation_bar.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-import '../widgets/bottom_navigation_bar.dart';
 
 class LoginScreen extends StatefulWidget {
   final String? successMessage;
 
-  const LoginScreen({super.key, this.successMessage});
+  const LoginScreen({
+    super.key,
+    this.successMessage,
+  });
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -20,9 +24,11 @@ class _LoginScreenState extends State<LoginScreen> {
   final passwordController = TextEditingController();
   final baseUrl = dotenv.env['API_BASE_URL']!;
   final storage = const FlutterSecureStorage();
-  bool rememberMe = false;
+
+  bool rememberMe = false;  
   bool isLoading = false;
   bool isPasswordVisible = false;
+
   String? formError;
   String? successMessage;
 
@@ -34,7 +40,9 @@ class _LoginScreenState extends State<LoginScreen> {
     if (email.isEmpty) {
       errors.add('Please enter your email');
     } else if (!email.toLowerCase().endsWith('@autuni.ac.nz')) {
-      errors.add('Please use your AUT email (@autuni.ac.nz)');
+      errors.add(
+        'Please use your AUT email (@autuni.ac.nz)',
+      );
     }
 
     if (password.isEmpty) {
@@ -57,10 +65,13 @@ class _LoginScreenState extends State<LoginScreen> {
     try {
       final response = await http.post(
         Uri.parse('$baseUrl/auth/login'),
-
-        headers: {'Content-Type': 'application/json'},
-
-        body: jsonEncode({'email': email, 'password': password}),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'email': email,
+          'password': password,
+        }),
       );
 
       final data = jsonDecode(response.body);
@@ -68,46 +79,97 @@ class _LoginScreenState extends State<LoginScreen> {
       if (!mounted) return;
 
       if (response.statusCode == 200) {
-        await storage.write(key: 'access_token', value: data['access_token']);
-        await storage.write(key: 'refresh_token', value: data['refresh_token']);
-
+        // Remember email/password if Remember Me is selected.
         if (rememberMe) {
-          await storage.write(key: 'remembered_email', value: email);
+          await storage.write(
+            key: 'remembered_email',
+            value: email,
+          );
 
-          await storage.write(key: 'remembered_password', value: password);
+          await storage.write(
+            key: 'remembered_password',
+            value: password,
+          );
         } else {
           await storage.delete(key: 'remembered_email');
           await storage.delete(key: 'remembered_password');
         }
+        // Login is successful, but the backend now requires OTP.
+        if (data['otp_required'] == true) {
+          if (!mounted) return;
 
-        if (!mounted) return;
-
-        Navigator.pushReplacement(
+          await Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) => AppBottomNavigationBar(
-              apiBaseUrl: baseUrl,
-              accessToken: data['access_token'],
-              refreshToken: data['refresh_token'],
+              builder: (context) => LoginOtpScreen(
+                email: data['email'] as String,
             ),
           ),
         );
+
+          if (!mounted) return;
+
+          setState(() {
+            isLoading = false;
+          });
+
+          return;
+        }
+
+        // ---------------------------------------------------------
+        // OTP disabled → login directly
+        // ---------------------------------------------------------
+
+        final accessToken = data['access_token'];
+        final refreshToken = data['refresh_token'];
+
+        if (accessToken == null || refreshToken == null) {
+          setState(() {
+            formError = '• No login session was returned';
+            isLoading = false;
+          });
+          return;
+        }
+
+        await storage.write(key: 'access_token', value: accessToken);
+
+        await storage.write(key: 'refresh_token', value: refreshToken);
+
+        if (!mounted) return;
+
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(
+            builder: (_) => AppBottomNavigationBar(
+              apiBaseUrl: baseUrl,
+              accessToken: accessToken,
+              refreshToken: refreshToken,
+            ),
+          ),
+          (route) => false,
+        );
+
+        return;
       } else {
+        String errorMessage = 'Invalid email or password';
+
+        if (data is Map<String, dynamic> &&
+            data['detail'] != null) {
+          errorMessage = data['detail'].toString();
+        }
+
         setState(() {
-          formError = '• Invalid email or password';
+          formError = '• $errorMessage';
+          isLoading = false;
         });
       }
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Could not connect to server: $e')),
-      );
-    } finally {
-      if (mounted) {
-        setState(() {
-          isLoading = false;
-        });
-      }
+
+      setState(() {
+        formError = '• Could not connect to server';
+        isLoading = false;
+      });
     }
   }
 
@@ -152,14 +214,19 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
-
       body: ListView(
-        padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 0),
+        padding: const EdgeInsets.symmetric(
+          horizontal: 40,
+          vertical: 0,
+        ),
 
         children: [
           const SizedBox(height: 40),
 
-          Image.asset('assets/StudyBuddies_logo.png', height: 200),
+          Image.asset(
+            'assets/StudyBuddies_logo.png',
+            height: 200,
+          ),
 
           const SizedBox(height: 30),
           if (successMessage != null)
@@ -168,7 +235,10 @@ class _LoginScreenState extends State<LoginScreen> {
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 color: const Color(0xFF1E1E1E),
-                border: Border.all(color: Colors.green, width: 1),
+                border: Border.all(
+                  color: Colors.green,
+                  width: 1,
+                ),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Row(
@@ -200,13 +270,20 @@ class _LoginScreenState extends State<LoginScreen> {
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
                 color: const Color(0xFF1E1E1E),
-                border: Border.all(color: Colors.red, width: 1),
+                border: Border.all(
+                  color: Colors.red,
+                  width: 1,
+                ),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Icon(Icons.error_outline, color: Colors.red, size: 20),
+                  const Icon(
+                    Icons.error_outline,
+                    color: Colors.red,
+                    size: 20,
+                  ),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
@@ -221,7 +298,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 ],
               ),
             ),
-
+            
           const Text(
             'Email',
             style: TextStyle(
@@ -231,17 +308,23 @@ class _LoginScreenState extends State<LoginScreen> {
               fontStyle: FontStyle.italic,
             ),
           ),
-
+          
           TextField(
             controller: emailController,
 
             keyboardType: TextInputType.emailAddress,
 
-            style: const TextStyle(color: Colors.black, fontSize: 14),
+            style: const TextStyle(
+              color: Colors.black,
+              fontSize: 14,
+            ),
 
             decoration: InputDecoration(
               hintText: 'Enter your email',
-              hintStyle: const TextStyle(color: Colors.grey, fontSize: 14),
+              hintStyle: const TextStyle(
+                color: Colors.grey,
+                fontSize: 14,
+              ),
               filled: true,
               fillColor: Colors.white,
               contentPadding: const EdgeInsets.symmetric(
@@ -266,16 +349,23 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
           ),
 
+
           TextField(
             controller: passwordController,
 
             obscureText: !isPasswordVisible,
-
-            style: const TextStyle(color: Colors.black, fontSize: 14),
+            
+            style: const TextStyle(
+              color: Colors.black,
+              fontSize: 14,
+            ),
 
             decoration: InputDecoration(
               hintText: 'Enter your password',
-              hintStyle: const TextStyle(color: Colors.grey, fontSize: 14),
+              hintStyle: const TextStyle(
+                color: Colors.grey,
+                fontSize: 14,
+              ),
               filled: true,
               fillColor: Colors.white,
               contentPadding: const EdgeInsets.symmetric(
@@ -287,7 +377,9 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
               suffixIcon: IconButton(
                 icon: Icon(
-                  isPasswordVisible ? Icons.visibility : Icons.visibility_off,
+                  isPasswordVisible
+                      ? Icons.visibility
+                      : Icons.visibility_off,
                   color: Colors.grey,
                   size: 18,
                 ),
@@ -299,7 +391,7 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
             ),
           ),
-
+          
           Row(
             children: [
               Checkbox(
@@ -318,16 +410,21 @@ class _LoginScreenState extends State<LoginScreen> {
                 },
                 side: const BorderSide(color: Colors.white),
                 checkColor: Colors.black,
-                fillColor: WidgetStateProperty.resolveWith((states) {
-                  if (states.contains(WidgetState.selected)) {
-                    return Colors.white;
-                  }
-                  return Colors.transparent;
-                }),
+                fillColor: WidgetStateProperty.resolveWith(
+                  (states) {
+                    if (states.contains(WidgetState.selected)) {
+                      return Colors.white;
+                    }
+                    return Colors.transparent;
+                  },
+                ),
               ),
               const Text(
                 'Remember me',
-                style: TextStyle(color: Colors.white, fontSize: 14),
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                ),
               ),
             ],
           ),
@@ -336,10 +433,17 @@ class _LoginScreenState extends State<LoginScreen> {
 
           ElevatedButton(
             onPressed: isLoading ? null : login,
-
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.blue,
+              disabledBackgroundColor: Colors.blue,
+            ),
             child: Text(
-              isLoading ? 'Logging in...' : 'Login',
-              style: const TextStyle(color: Colors.black),
+              isLoading ? 'Checking credentials...' : 'Login',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 15,
+                fontWeight: FontWeight.bold,
+              ),
             ),
           ),
 
@@ -351,7 +455,10 @@ class _LoginScreenState extends State<LoginScreen> {
                 children: [
                   const TextSpan(
                     text: "Don't have an account? ",
-                    style: TextStyle(color: Colors.white, fontSize: 14),
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                    ),
                   ),
                   WidgetSpan(
                     alignment: PlaceholderAlignment.baseline,

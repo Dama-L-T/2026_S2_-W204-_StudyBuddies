@@ -3,6 +3,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 
 import '../Schedule/schedule.page.dart';
+import '../Settings/settings.page.dart';
 // import matchmaking, communication, profile, and settings pages when implemented
 
 class AppBottomNavigationBar extends StatefulWidget {
@@ -10,10 +11,12 @@ class AppBottomNavigationBar extends StatefulWidget {
     super.key,
     required this.apiBaseUrl,
     required this.accessToken,
+    required this.refreshToken,
   });
 
   final String apiBaseUrl;
   final String accessToken;
+  final String refreshToken;
 
   @override
   State<AppBottomNavigationBar> createState() =>
@@ -52,8 +55,9 @@ class _AppBottomNavigationBarState
       ),
 
       // Replace with actual Settings page
-      const Center(
-        child: Text('Settings Page'),
+      SettingsPage(
+        apiBaseUrl: widget.apiBaseUrl,
+        accessToken: widget.accessToken,
       ),
     ];
   }
