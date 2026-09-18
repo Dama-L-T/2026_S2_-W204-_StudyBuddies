@@ -979,6 +979,8 @@ class ScheduleItemDetailScreen extends StatelessWidget {
   const ScheduleItemDetailScreen({super.key, required this.item});
 
   final StudyItem item;
+  final VoidCallback onEdit;
+  final VoidCallback onDelete;
 
   @override
   Widget build(BuildContext context) {
