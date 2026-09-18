@@ -126,7 +126,11 @@ def _list_mock_schedule_items() -> list[ScheduleItem]:
 
 def _get_user_id_from_access_token(access_token: str) -> str | None:
     supabase = get_supabase_client()
-    response = supabase.auth.get_user(access_token)
+
+    try:
+        response = supabase.auth.get_user(access_token)
+    except Exception as error:
+        raise PermissionError("Invalid or expired access token") from error
 
     if response.user is None:
         return None
