@@ -350,6 +350,7 @@ def _assignment_from_row(row: dict[str, Any]) -> ScheduleItem:
         time=_time_part(row.get("due_date")) or "Due date",
         location="Not applicable",
         status=str(row.get("status") or "pending"),
+        priority=str(row.get("priority") or ""),
     )
 
 
@@ -362,6 +363,7 @@ def _event_from_row(row: dict[str, Any]) -> ScheduleItem:
         time=_event_time(row),
         location=str(row.get("location") or row.get("description") or "Location TBC"),
         status="",
+        priority="",
     )
 
 

@@ -9,6 +9,7 @@ class ScheduleItem(BaseModel):
     time: str
     location: str
     status: str = ""
+    priority: str = ""
 
 
 class ScheduleItemCreate(BaseModel):
