@@ -37,6 +37,8 @@ class StudyItem {
   }
 }
 
+enum _ScheduleItemDetailAction { edit, delete }
+
 class SchedulerScreen extends StatefulWidget {
   const SchedulerScreen({
     super.key,
@@ -60,6 +62,7 @@ class _SchedulerScreenState extends State<SchedulerScreen> {
   late Future<List<StudyItem>> _scheduleItems;
   String? _accessToken;
   String? _refreshToken;
+  DateTime _selectedDate = _dateOnly(DateTime.now());
 
   @override
   void initState() {
@@ -119,6 +122,7 @@ class _SchedulerScreenState extends State<SchedulerScreen> {
           apiBaseUrl: widget.apiBaseUrl,
           accessToken: _accessToken,
           refreshToken: _refreshToken,
+          initialDate: _selectedDate,
         ),
       ),
     );
@@ -130,6 +134,25 @@ class _SchedulerScreenState extends State<SchedulerScreen> {
       setState(() {
         _scheduleItems = _fetchScheduleItems();
       });
+    }
+  }
+
+  Future<void> _openScheduleItemDetails(StudyItem item) async {
+    final action = await Navigator.push<_ScheduleItemDetailAction>(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ScheduleItemDetailScreen(item: item),
+      ),
+    );
+
+    if (!mounted) return;
+
+    if (action == _ScheduleItemDetailAction.edit) {
+      await _openEditScheduleItem(item);
+    }
+
+    if (action == _ScheduleItemDetailAction.delete) {
+      await _deleteScheduleItem(item);
     }
   }
 
@@ -245,12 +268,17 @@ class _SchedulerScreenState extends State<SchedulerScreen> {
           }
 
           final items = snapshot.data ?? [];
+          final selectedItems = items.where(_isItemOnSelectedDate).toList();
 
           if (items.isEmpty) {
             return ListView(
               padding: const EdgeInsets.all(16),
               children: [
-                const SizedBox(height: 120),
+                _ScheduleCalendar(
+                  selectedDate: _selectedDate,
+                  onDateSelected: _selectDate,
+                ),
+                const SizedBox(height: 24),
                 const _SchedulerMessage(
                   icon: Icons.event_available,
                   title: 'No upcoming study items',
@@ -266,14 +294,33 @@ class _SchedulerScreenState extends State<SchedulerScreen> {
 
           return ListView.separated(
             padding: const EdgeInsets.all(16),
-            itemCount: items.length + 2,
+            itemCount: selectedItems.isEmpty ? 4 : selectedItems.length + 3,
             separatorBuilder: (context, index) => const SizedBox(height: 12),
             itemBuilder: (context, index) {
               if (index == 0) {
+                return _ScheduleCalendar(
+                  selectedDate: _selectedDate,
+                  onDateSelected: _selectDate,
+                );
+              }
+
+              if (index == 1) {
                 return const _SchedulerHeader();
               }
 
-              if (index == items.length + 1) {
+              if (selectedItems.isEmpty && index == 2) {
+                return const _SchedulerMessage(
+                  icon: Icons.event_available,
+                  title: 'No items for this date',
+                  message: 'Use the plus button to add one.',
+                );
+              }
+
+              final addButtonIndex = selectedItems.isEmpty
+                  ? 3
+                  : selectedItems.length + 2;
+
+              if (index == addButtonIndex) {
                 return Center(
                   child: Padding(
                     padding: const EdgeInsets.only(top: 4, bottom: 80),
@@ -282,11 +329,10 @@ class _SchedulerScreenState extends State<SchedulerScreen> {
                 );
               }
 
-              final item = items[index - 1];
+              final item = selectedItems[index - 2];
               return _StudyItemCard(
                 item: item,
-                onEdit: () => _openEditScheduleItem(item),
-                onDelete: () => _deleteScheduleItem(item),
+                onTap: () => _openScheduleItemDetails(item),
               );
             },
           );
@@ -349,6 +395,20 @@ class _SchedulerScreenState extends State<SchedulerScreen> {
       _scheduleItems = _fetchScheduleItems();
     });
   }
+
+  bool _isItemOnSelectedDate(StudyItem item) {
+    final itemDate = DateTime.tryParse(item.date);
+
+    if (itemDate == null) return false;
+
+    return _isSameDay(itemDate, _selectedDate);
+  }
+
+  void _selectDate(DateTime selectedDate) {
+    setState(() {
+      _selectedDate = _dateOnly(selectedDate);
+    });
+  }
 }
 
 class ScheduleItemDraft {
@@ -387,12 +447,14 @@ class AddScheduleItemScreen extends StatefulWidget {
     this.accessToken,
     this.refreshToken,
     this.item,
+    this.initialDate,
   });
 
   final String apiBaseUrl;
   final String? accessToken;
   final String? refreshToken;
   final StudyItem? item;
+  final DateTime? initialDate;
 
   @override
   State<AddScheduleItemScreen> createState() => _AddScheduleItemScreenState();
@@ -417,6 +479,7 @@ class _AddScheduleItemScreenState extends State<AddScheduleItemScreen> {
     super.initState();
     _accessToken = widget.accessToken;
     _refreshToken = widget.refreshToken;
+    _date = widget.initialDate ?? DateTime.now();
 
     final item = widget.item;
 
@@ -799,6 +862,35 @@ class _SchedulePickerTile extends StatelessWidget {
   }
 }
 
+class _ScheduleCalendar extends StatelessWidget {
+  const _ScheduleCalendar({
+    required this.selectedDate,
+    required this.onDateSelected,
+  });
+
+  final DateTime selectedDate;
+  final ValueChanged<DateTime> onDateSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Material(
+      color: colorScheme.surface,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(8),
+        side: BorderSide(color: colorScheme.outlineVariant),
+      ),
+      child: CalendarDatePicker(
+        initialDate: selectedDate,
+        firstDate: DateTime.now().subtract(const Duration(days: 365)),
+        lastDate: DateTime.now().add(const Duration(days: 365 * 3)),
+        onDateChanged: onDateSelected,
+      ),
+    );
+  }
+}
+
 class _SchedulerMessage extends StatelessWidget {
   const _SchedulerMessage({
     required this.icon,
@@ -883,12 +975,8 @@ class _AddScheduleButton extends StatelessWidget {
   }
 }
 
-class _StudyItemCard extends StatelessWidget {
-  const _StudyItemCard({
-    required this.item,
-    required this.onEdit,
-    required this.onDelete,
-  });
+class ScheduleItemDetailScreen extends StatelessWidget {
+  const ScheduleItemDetailScreen({super.key, required this.item});
 
   final StudyItem item;
   final VoidCallback onEdit;
@@ -897,78 +985,166 @@ class _StudyItemCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
+    final colorScheme = Theme.of(context).colorScheme;
+    final isAssignment = item.itemType == 'Assignment';
+    final status = item.status.toLowerCase() == 'completed'
+        ? 'Completed'
+        : 'Pending';
 
-    return Card(
-      elevation: 0,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(8),
-        side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
-      ),
-      child: Padding(
+    return Scaffold(
+      appBar: const AppBarWidget(title: 'Schedule Details', showBackButton: true),
+      body: ListView(
         padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Text(
-                    item.title,
-                    style: textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Text(
+                  item.title,
+                  style: textTheme.headlineSmall?.copyWith(
+                    fontWeight: FontWeight.w800,
                   ),
                 ),
-                IconButton(
-                  onPressed: onEdit,
-                  icon: const Icon(Icons.edit_outlined),
-                  tooltip: 'Edit',
-                ),
-                IconButton(
-                  onPressed: onDelete,
-                  icon: const Icon(Icons.delete_outline),
-                  tooltip: 'Delete',
-                ),
-              ],
-            ),
+              ),
+              Chip(
+                label: Text(item.itemType),
+                visualDensity: VisualDensity.compact,
+              ),
+            ],
+          ),
+          if (isAssignment) ...[
             const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                Chip(
-                  label: Text(item.itemType),
-                  visualDensity: VisualDensity.compact,
-                ),
-                if (item.itemType == 'Assignment')
-                  Chip(
-                    label: Text(
-                      item.status.toLowerCase() == 'completed'
-                          ? 'Completed'
-                          : 'Pending',
-                    ),
-                    visualDensity: VisualDensity.compact,
-                  ),
-              ],
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Chip(
+                label: Text(status),
+                visualDensity: VisualDensity.compact,
+              ),
             ),
-            const SizedBox(height: 12),
-            _StudyItemDetail(
-              icon: Icons.calendar_today,
-              label: 'Date',
-              value: item.date,
-            ),
-            _StudyItemDetail(
-              icon: Icons.schedule,
-              label: 'Time',
-              value: item.time,
-            ),
+          ],
+          const SizedBox(height: 24),
+          _StudyItemDetail(
+            icon: Icons.calendar_today,
+            label: isAssignment ? 'Due date' : 'Date',
+            value: item.date,
+          ),
+          _StudyItemDetail(
+            icon: Icons.schedule,
+            label: isAssignment ? 'Due time' : 'Time',
+            value: item.time,
+          ),
+          if (!isAssignment && item.location.trim().isNotEmpty)
             _StudyItemDetail(
               icon: Icons.location_on_outlined,
               label: 'Location',
               value: item.location,
             ),
-          ],
+          const SizedBox(height: 28),
+          FilledButton.icon(
+            onPressed: () =>
+                Navigator.pop(context, _ScheduleItemDetailAction.edit),
+            icon: const Icon(Icons.edit_outlined),
+            label: const Text('Edit'),
+          ),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            onPressed: () =>
+                Navigator.pop(context, _ScheduleItemDetailAction.delete),
+            icon: const Icon(Icons.delete_outline),
+            label: const Text('Delete'),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: colorScheme.error,
+              side: BorderSide(color: colorScheme.error),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _StudyItemCard extends StatelessWidget {
+  const _StudyItemCard({
+    required this.item,
+    required this.onTap,
+  });
+
+  final StudyItem item;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    final isAssignment = item.itemType == 'Assignment';
+
+    return Card(
+      elevation: 0,
+      clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(8),
+        side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
+      ),
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Text(
+                      item.title,
+                      style: textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  const Icon(Icons.chevron_right),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  Chip(
+                    label: Text(item.itemType),
+                    visualDensity: VisualDensity.compact,
+                  ),
+                  if (isAssignment)
+                    Chip(
+                      label: Text(
+                        item.status.toLowerCase() == 'completed'
+                            ? 'Completed'
+                            : 'Pending',
+                      ),
+                      visualDensity: VisualDensity.compact,
+                    ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              _StudyItemDetail(
+                icon: Icons.calendar_today,
+                label: 'Date',
+                value: item.date,
+              ),
+              _StudyItemDetail(
+                icon: Icons.schedule,
+                label: 'Time',
+                value: item.time,
+              ),
+              if (!isAssignment && item.location.trim().isNotEmpty)
+                _StudyItemDetail(
+                  icon: Icons.location_on_outlined,
+                  label: 'Location',
+                  value: item.location,
+                ),
+            ],
+          ),
         ),
       ),
     );
@@ -1030,6 +1206,16 @@ String _timeForApi(TimeOfDay value) {
     value.hour.toString().padLeft(2, '0'),
     value.minute.toString().padLeft(2, '0'),
   ].join(':');
+}
+
+DateTime _dateOnly(DateTime value) {
+  return DateTime(value.year, value.month, value.day);
+}
+
+bool _isSameDay(DateTime first, DateTime second) {
+  return first.year == second.year &&
+      first.month == second.month &&
+      first.day == second.day;
 }
 
 TimeOfDay? _timeFromScheduleItem(String value) {
