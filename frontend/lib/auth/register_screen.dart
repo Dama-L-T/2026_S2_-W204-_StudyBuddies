@@ -8,35 +8,30 @@ class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
 
   @override
-  State<RegisterScreen> createState() =>
-      _RegisterScreenState();
+  State<RegisterScreen> createState() => _RegisterScreenState();
 }
 
 class _RegisterScreenState extends State<RegisterScreen> {
-  final nameController = TextEditingController();
   final emailController = TextEditingController();
   final passwordController = TextEditingController();
   final confirmPasswordController = TextEditingController();
   final emailFocusNode = FocusNode();
   final confirmPasswordFocusNode = FocusNode();
   final baseUrl = dotenv.env['API_BASE_URL']!;
+
   String? formError;
   String? emailError;
   String? confirmPasswordError;
+
   bool isLoading = false;
   bool isPasswordVisible = false;
   bool isConfirmPasswordVisible = false;
 
   Future<void> register() async {
-    final name = nameController.text.trim();
     final email = emailController.text.trim();
     final password = passwordController.text;
     final confirmPassword = confirmPasswordController.text;
     final errors = <String>[];
-
-    if (name.isEmpty) {
-      errors.add('Please enter your name');
-    }
 
     if (email.isEmpty) {
       errors.add('Please enter your email');
@@ -81,8 +76,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
       if (checkResponse.statusCode == 409) {
         setState(() {
-          formError =
-              '• This email is already registered.';
+          formError = '• This email is already registered.';
           isLoading = false;
         });
         return;
@@ -99,13 +93,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
       final response = await http.post(
         Uri.parse('$baseUrl/auth/register'),
-
         headers: {
           'Content-Type': 'application/json',
         },
-
         body: jsonEncode({
-          'name': name,
           'email': email,
           'password': password,
         }),
@@ -188,7 +179,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   @override
   void dispose() {
-    nameController.dispose();
     emailController.dispose();
     passwordController.dispose();
     confirmPasswordController.dispose();
@@ -231,8 +221,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
           horizontal: 40,
           vertical: 20,
         ),
-
-        children: [          
+        children: [   
+          const SizedBox(height: 40),       
           if (formError != null)
             Container(
               margin: const EdgeInsets.only(bottom: 20),
@@ -265,42 +255,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
                 ],
               ),
             ),
-
-          const Text(
-            'Name',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 14,
-              fontWeight: FontWeight.bold,
-              fontStyle: FontStyle.italic,
-            ),
-          ),
-
-          TextField(
-            controller: nameController,
-            style: const TextStyle(
-              color: Colors.black,
-              fontSize: 14,
-            ),
-            decoration: InputDecoration(
-              hintText: 'Enter your name',
-              hintStyle: const TextStyle(
-                color: Colors.grey,
-                fontSize: 14,
-              ),
-              filled: true,
-              fillColor: Colors.white,
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 16,
-                vertical: 10,
-              ),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(20),
-              ),
-            ),
-          ),
-
-          const SizedBox(height: 8),
 
           const Text(
             'Email',
@@ -367,35 +321,26 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
           TextField(
             controller: passwordController,
-
             obscureText: !isPasswordVisible,
-
             style: const TextStyle(
               color: Colors.black,
               fontSize: 14,
             ),
-
             decoration: InputDecoration(
               hintText: 'Enter a password',
-
               hintStyle: const TextStyle(
                 color: Colors.grey,
                 fontSize: 14,
               ),
-
               filled: true,
-
               fillColor: Colors.white,
-
               contentPadding: const EdgeInsets.symmetric(
                 horizontal: 16,
                 vertical: 10,
               ),
-
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(20),
               ),
-
               suffixIcon: IconButton(
                 icon: Icon(
                   isPasswordVisible
@@ -483,10 +428,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
           const SizedBox(height: 60),
 
           ElevatedButton(
-
-            onPressed:
-                isLoading ? null : register,
-
+            onPressed: isLoading ? null : register,
             child: Text(
               isLoading ? 'Creating account...' : 'Sign Up',
               style: const TextStyle( color: Colors.black, ),
