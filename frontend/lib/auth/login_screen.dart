@@ -1,8 +1,9 @@
 import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+
 import 'register_screen.dart';
-import '../Schedule/schedule.page.dart';
 import '../profile/profile.dart';
 import 'login_otp_screen.dart';
 import '../widgets/bottom_navigation_bar.dart';
@@ -25,10 +26,11 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final emailController = TextEditingController();
   final passwordController = TextEditingController();
+
   final baseUrl = dotenv.env['API_BASE_URL']!;
   final storage = const FlutterSecureStorage();
 
-  bool rememberMe = false;  
+  bool rememberMe = false;
   bool isLoading = false;
   bool isPasswordVisible = false;
 
@@ -38,6 +40,7 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> login() async {
     final email = emailController.text.trim();
     final password = passwordController.text;
+
     final errors = <String>[];
 
     if (email.isEmpty) {
@@ -81,132 +84,150 @@ class _LoginScreenState extends State<LoginScreen> {
 
       if (!mounted) return;
 
-if (response.statusCode == 200) {
-  // Remember email/password if Remember Me is selected.
-  if (rememberMe) {
-    await storage.write(
-      key: 'remembered_email',
-      value: email,
-    );
-    await storage.write(
-      key: 'remembered_password',
-      value: password,
-    );
-  } else {
-    await storage.delete(key: 'remembered_email');
-    await storage.delete(key: 'remembered_password');
-  }
+      if (response.statusCode == 200) {
+        // Remember email/password if Remember Me is selected.
+        if (rememberMe) {
+          await storage.write(
+            key: 'remembered_email',
+            value: email,
+          );
 
-  // Login is successful, but the backend may require OTP.
-  if (data['otp_required'] == true) {
-    if (!mounted) return;
+          await storage.write(
+            key: 'remembered_password',
+            value: password,
+          );
+        } else {
+          await storage.delete(key: 'remembered_email');
+          await storage.delete(key: 'remembered_password');
+        }
 
-    await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => LoginOtpScreen(
-          email: data['email'] as String,
-        ),
-      ),
-    );
+        // Login is successful, but the backend may require OTP.
+        if (data['otp_required'] == true) {
+          if (!mounted) return;
 
-    if (!mounted) return;
+          await Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => LoginOtpScreen(
+                email: data['email'] as String,
+              ),
+            ),
+          );
 
-    setState(() {
-      isLoading = false;
-    });
+          if (!mounted) return;
 
-    return;
-  }
+          setState(() {
+            isLoading = false;
+          });
 
-  // OTP disabled → login directly.
-  final accessToken = data['access_token'];
-  final refreshToken = data['refresh_token'];
+          return;
+        }
 
-  if (accessToken == null || refreshToken == null) {
-    setState(() {
-      formError = '• No login session was returned';
-      isLoading = false;
-    });
-    return;
-  }
+        // OTP disabled → login directly.
+        final accessToken = data['access_token'];
+        final refreshToken = data['refresh_token'];
 
-  await storage.write(
-    key: 'access_token',
-    value: accessToken,
-  );
+        if (accessToken == null || refreshToken == null) {
+          setState(() {
+            formError = '• No login session was returned';
+            isLoading = false;
+          });
+          return;
+        }
 
-  await storage.write(
-    key: 'refresh_token',
-    value: refreshToken,
-  );
+        await storage.write(
+          key: 'access_token',
+          value: accessToken,
+        );
 
-  // Check whether the user has completed their profile.
-  final profileResponse = await http.get(
-    Uri.parse('$baseUrl/profile/status'),
-    headers: {
-      'Authorization': 'Bearer $accessToken',
-    },
-  );
+        await storage.write(
+          key: 'refresh_token',
+          value: refreshToken,
+        );
 
-  if (!mounted) return;
+        // Check whether the user has completed their profile.
+        final profileResponse = await http.get(
+          Uri.parse('$baseUrl/profile/status'),
+          headers: {
+            'Authorization': 'Bearer $accessToken',
+          },
+        );
 
-  if (profileResponse.statusCode == 200) {
-    final profileData = jsonDecode(profileResponse.body);
+        if (!mounted) return;
 
-    final profileCompleted =
-        profileData['profile_completed'] == true;
+        if (profileResponse.statusCode == 200) {
+          final profileData = jsonDecode(profileResponse.body);
 
-    if (profileCompleted) {
-      // Profile already exists → go to the main app.
-      Navigator.pushAndRemoveUntil(
-        context,
-        MaterialPageRoute(
-          builder: (_) => AppBottomNavigationBar(
-            apiBaseUrl: baseUrl,
-            accessToken: accessToken,
-            refreshToken: refreshToken,
-          ),
-        ),
-        (route) => false,
-      );
-    } else {
-      // First login → complete profile first.
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (context) => ProfilePage(
-            apiBaseUrl: baseUrl,
-            accessToken: accessToken,
-          ),
-        ),
-      );
-    }
-  } else {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Could not check your profile.'),
-      ),
-    );
+          final profileCompleted =
+              profileData['profile_completed'] == true;
 
-    setState(() {
-      isLoading = false;
-    });
-  }
+          if (profileCompleted) {
+            // Profile already exists → go to the main app.
+            Navigator.pushAndRemoveUntil(
+              context,
+              MaterialPageRoute(
+                builder: (_) => AppBottomNavigationBar(
+                  apiBaseUrl: baseUrl,
+                  accessToken: accessToken,
+                  refreshToken: refreshToken,
+                ),
+              ),
+              (route) => false,
+            );
+          } else {
+            // First login → complete profile first.
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (context) => ProfilePage(
+                  apiBaseUrl: baseUrl,
+                  accessToken: accessToken,
 
-  return;
-} else {
-  var errorMessage = 'Login failed';
+                  // After the profile is saved,
+                  // open the main app with the bottom taskbar.
+                  onProfileSaved: () {
+                    Navigator.pushAndRemoveUntil(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => AppBottomNavigationBar(
+                          apiBaseUrl: baseUrl,
+                          accessToken: accessToken,
+                          refreshToken: refreshToken,
+                        ),
+                      ),
+                      (route) => false,
+                    );
+                  },
+                ),
+              ),
+            );
+          }
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Could not check your profile.'),
+            ),
+          );
 
-  if (data is Map<String, dynamic> && data['detail'] != null) {
-    errorMessage = data['detail'].toString();
-  }
+          setState(() {
+            isLoading = false;
+          });
+        }
 
-  setState(() {
-    formError = '• $errorMessage';
-    isLoading = false;
-  });
-}
+        return;
+      } else {
+        var errorMessage = 'Login failed';
+
+        if (data is Map<String, dynamic> &&
+            data['detail'] != null) {
+          errorMessage = data['detail'].toString();
+        }
+
+        setState(() {
+          formError = '• $errorMessage';
+          isLoading = false;
+        });
+      }
     } catch (e) {
       if (!mounted) return;
 
@@ -218,8 +239,11 @@ if (response.statusCode == 200) {
   }
 
   Future<void> _loadSavedLogin() async {
-    final savedEmail = await storage.read(key: 'remembered_email');
-    final savedPassword = await storage.read(key: 'remembered_password');
+    final savedEmail =
+        await storage.read(key: 'remembered_email');
+
+    final savedPassword =
+        await storage.read(key: 'remembered_password');
 
     if (!mounted) return;
 
@@ -263,7 +287,6 @@ if (response.statusCode == 200) {
           horizontal: 40,
           vertical: 0,
         ),
-
         children: [
           const SizedBox(height: 40),
 
@@ -273,6 +296,7 @@ if (response.statusCode == 200) {
           ),
 
           const SizedBox(height: 30),
+
           if (successMessage != null)
             Container(
               margin: const EdgeInsets.only(bottom: 20),
@@ -293,7 +317,9 @@ if (response.statusCode == 200) {
                     color: Colors.green,
                     size: 20,
                   ),
+
                   const SizedBox(width: 8),
+
                   Expanded(
                     child: Text(
                       successMessage!,
@@ -328,7 +354,9 @@ if (response.statusCode == 200) {
                     color: Colors.red,
                     size: 20,
                   ),
+
                   const SizedBox(width: 8),
+
                   Expanded(
                     child: Text(
                       formError!,
@@ -342,7 +370,7 @@ if (response.statusCode == 200) {
                 ],
               ),
             ),
-            
+
           const Text(
             'Email',
             style: TextStyle(
@@ -352,17 +380,14 @@ if (response.statusCode == 200) {
               fontStyle: FontStyle.italic,
             ),
           ),
-          
+
           TextField(
             controller: emailController,
-
             keyboardType: TextInputType.emailAddress,
-
             style: const TextStyle(
               color: Colors.black,
               fontSize: 14,
             ),
-
             decoration: InputDecoration(
               hintText: 'Enter your email',
               hintStyle: const TextStyle(
@@ -393,17 +418,13 @@ if (response.statusCode == 200) {
             ),
           ),
 
-
           TextField(
             controller: passwordController,
-
             obscureText: !isPasswordVisible,
-            
             style: const TextStyle(
               color: Colors.black,
               fontSize: 14,
             ),
-
             decoration: InputDecoration(
               hintText: 'Enter your password',
               hintStyle: const TextStyle(
@@ -435,7 +456,7 @@ if (response.statusCode == 200) {
               ),
             ),
           ),
-          
+
           Row(
             children: [
               Checkbox(
@@ -448,21 +469,33 @@ if (response.statusCode == 200) {
                   });
 
                   if (!isChecked) {
-                    await storage.delete(key: 'remembered_email');
-                    await storage.delete(key: 'remembered_password');
+                    await storage.delete(
+                      key: 'remembered_email',
+                    );
+
+                    await storage.delete(
+                      key: 'remembered_password',
+                    );
                   }
                 },
-                side: const BorderSide(color: Colors.white),
+                side: const BorderSide(
+                  color: Colors.white,
+                ),
                 checkColor: Colors.black,
-                fillColor: WidgetStateProperty.resolveWith(
+                fillColor:
+                    WidgetStateProperty.resolveWith(
                   (states) {
-                    if (states.contains(WidgetState.selected)) {
+                    if (states.contains(
+                      WidgetState.selected,
+                    )) {
                       return Colors.white;
                     }
+
                     return Colors.transparent;
                   },
                 ),
               ),
+
               const Text(
                 'Remember me',
                 style: TextStyle(
@@ -482,7 +515,9 @@ if (response.statusCode == 200) {
               disabledBackgroundColor: Colors.blue,
             ),
             child: Text(
-              isLoading ? 'Checking credentials...' : 'Login',
+              isLoading
+                  ? 'Checking credentials...'
+                  : 'Login',
               style: const TextStyle(
                 color: Colors.white,
                 fontSize: 15,
@@ -490,6 +525,7 @@ if (response.statusCode == 200) {
               ),
             ),
           ),
+
           const SizedBox(height: 8),
 
           Center(
@@ -498,7 +534,8 @@ if (response.statusCode == 200) {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (context) => const ForgotPasswordScreen(),
+                    builder: (context) =>
+                        const ForgotPasswordScreen(),
                   ),
                 );
               },
@@ -512,6 +549,7 @@ if (response.statusCode == 200) {
               ),
             ),
           ),
+
           const SizedBox(height: 8),
 
           Center(
@@ -525,6 +563,7 @@ if (response.statusCode == 200) {
                       fontSize: 14,
                     ),
                   ),
+
                   WidgetSpan(
                     alignment: PlaceholderAlignment.baseline,
                     baseline: TextBaseline.alphabetic,
@@ -533,7 +572,8 @@ if (response.statusCode == 200) {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (context) => const RegisterScreen(),
+                            builder: (context) =>
+                                const RegisterScreen(),
                           ),
                         );
                       },

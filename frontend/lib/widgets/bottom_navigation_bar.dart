@@ -5,7 +5,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../Schedule/schedule.page.dart';
 import '../Settings/settings.page.dart';
-// import matchmaking, communication, profile, and settings pages when implemented
+import '../profile/profile.dart';
 
 class AppBottomNavigationBar extends StatefulWidget {
   const AppBottomNavigationBar({
@@ -20,14 +20,17 @@ class AppBottomNavigationBar extends StatefulWidget {
   final String refreshToken;
 
   @override
-  State<AppBottomNavigationBar> createState() => _AppBottomNavigationBarState();
+  State<AppBottomNavigationBar> createState() =>
+      _AppBottomNavigationBarState();
 }
 
-class _AppBottomNavigationBarState extends State<AppBottomNavigationBar> {
-  final _storage = FlutterSecureStorage();
+class _AppBottomNavigationBarState
+    extends State<AppBottomNavigationBar> {
+  final _storage = const FlutterSecureStorage();
 
   int currentIndex = 0;
   int _schedulePageVersion = 0;
+
   late String _accessToken;
   late String _refreshToken;
 
@@ -43,24 +46,25 @@ class _AppBottomNavigationBarState extends State<AppBottomNavigationBar> {
   Widget build(BuildContext context) {
     return Scaffold(
       extendBody: true,
-
       body: _buildPage(currentIndex),
-
       bottomNavigationBar: Container(
-        margin: const EdgeInsets.only(left: 12, right: 12, bottom: 12),
+        margin: const EdgeInsets.only(
+          left: 12,
+          right: 12,
+          bottom: 12,
+        ),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(30),
           child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
+            filter: ImageFilter.blur(
+              sigmaX: 15,
+              sigmaY: 15,
+            ),
             child: Container(
               height: 60,
               decoration: BoxDecoration(
-                // Clear frosted glass
                 color: Colors.white.withValues(alpha: 0.45),
-
                 borderRadius: BorderRadius.circular(30),
-
-                // Soft shadow
                 boxShadow: [
                   BoxShadow(
                     color: Colors.black.withValues(alpha: 0.2),
@@ -84,7 +88,11 @@ class _AppBottomNavigationBarState extends State<AppBottomNavigationBar> {
                         icon: Icons.people,
                         label: 'Match',
                       ),
-                      _buildNavItem(index: 2, icon: Icons.chat, label: 'Chat'),
+                      _buildNavItem(
+                        index: 2,
+                        icon: Icons.chat,
+                        label: 'Chat',
+                      ),
                       _buildNavItem(
                         index: 3,
                         icon: Icons.person,
@@ -144,7 +152,11 @@ class _AppBottomNavigationBarState extends State<AppBottomNavigationBar> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(icon, color: Colors.black, size: 22),
+                Icon(
+                  icon,
+                  color: Colors.black,
+                  size: 22,
+                ),
                 const SizedBox(height: 1),
                 Text(
                   label,
@@ -165,10 +177,17 @@ class _AppBottomNavigationBarState extends State<AppBottomNavigationBar> {
   }
 
   Future<void> _loadStoredTokens() async {
-    final accessToken = await _storage.read(key: 'access_token');
-    final refreshToken = await _storage.read(key: 'refresh_token');
+    final accessToken = await _storage.read(
+      key: 'access_token',
+    );
 
-    if (accessToken == null || refreshToken == null) return;
+    final refreshToken = await _storage.read(
+      key: 'refresh_token',
+    );
+
+    if (accessToken == null || refreshToken == null) {
+      return;
+    }
 
     _accessToken = accessToken;
     _refreshToken = refreshToken;
@@ -183,19 +202,40 @@ class _AppBottomNavigationBarState extends State<AppBottomNavigationBar> {
           accessToken: _accessToken,
           refreshToken: _refreshToken,
         );
+
       case 1:
-        return const Center(child: Text('Matchmaking Page'));
+        return const Center(
+          child: Text('Matchmaking Page'),
+        );
+
       case 2:
-        return const Center(child: Text('Communication Page'));
+        return const Center(
+          child: Text('Communication Page'),
+        );
+
       case 3:
-        return const Center(child: Text('Profile Page'));
+        return ProfilePage(
+          apiBaseUrl: widget.apiBaseUrl,
+          accessToken: _accessToken,
+          onProfileSaved: () {
+            setState(() {
+              currentIndex = 0;
+              _schedulePageVersion++;
+            });
+          },
+        );
+
       case 4:
         return SettingsPage(
           apiBaseUrl: widget.apiBaseUrl,
           accessToken: _accessToken,
         );
+
       default:
-        return const Center(child: Text('Page not found'));
+        return const Center(
+          child: Text('Page not found'),
+        );
     }
   }
 }
+

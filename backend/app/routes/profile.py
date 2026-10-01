@@ -20,20 +20,69 @@ class Profile(BaseModel):
 
 
 @router.get("/status")
-def get_profile_status(current_user=Depends(get_current_user)):
+def get_profile_status(
+    current_user=Depends(get_current_user)
+):
     supabase = get_supabase_client(use_service_role=True)
 
-    response = (
-        supabase
-        .table("profiles")
-        .select("user_id")
-        .eq("user_id", current_user.id)
-        .execute()
-    )
+    try:
+        response = (
+            supabase
+            .table("profiles")
+            .select("user_id")
+            .eq("user_id", current_user.id)
+            .execute()
+        )
 
-    return {
-        "profile_completed": len(response.data) > 0
-    }
+        return {
+            "profile_completed": len(response.data) > 0
+        }
+
+    except Exception as error:
+        print("PROFILE STATUS ERROR:", repr(error))
+
+        raise HTTPException(
+            status_code=500,
+            detail="Could not check profile status",
+        ) from error
+
+
+@router.get("/")
+def get_profile(
+    current_user=Depends(get_current_user)
+):
+    supabase = get_supabase_client(use_service_role=True)
+
+    try:
+        response = (
+            supabase
+            .table("profiles")
+            .select(
+                "name, personal_details, courses, interests, preferences"
+            )
+            .eq("user_id", current_user.id)
+            .maybe_single()
+            .execute()
+        )
+
+        if response.data is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Profile not found",
+            )
+
+        return response.data
+
+    except HTTPException:
+        raise
+
+    except Exception as error:
+        print("PROFILE GET ERROR:", repr(error))
+
+        raise HTTPException(
+            status_code=500,
+            detail="Could not retrieve profile",
+        ) from error
 
 
 @router.post("/")
@@ -56,7 +105,10 @@ def save_profile(
         response = (
             supabase
             .table("profiles")
-            .upsert(profile_data)
+            .upsert(
+                profile_data,
+                on_conflict="user_id"
+            )
             .execute()
         )
 
@@ -67,6 +119,7 @@ def save_profile(
 
     except Exception as error:
         print("PROFILE SAVE ERROR:", repr(error))
+
         raise HTTPException(
             status_code=500,
             detail="Could not save profile",
