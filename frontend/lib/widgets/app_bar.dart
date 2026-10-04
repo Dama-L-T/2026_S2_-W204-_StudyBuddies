@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-
 import '../auth/login_screen.dart';
 
 class AppBarWidget extends StatelessWidget implements PreferredSizeWidget {

@@ -10,19 +10,28 @@ Future<void> main() async {
 
   await dotenv.load(fileName: '.env');
 
-  final storage = FlutterSecureStorage();
+  const storage = FlutterSecureStorage();
 
   final accessToken = await storage.read(key: 'access_token');
   final refreshToken = await storage.read(key: 'refresh_token');
 
-  runApp(MyApp(accessToken: accessToken, refreshToken: refreshToken));
+  runApp(
+    MyApp(
+      accessToken: accessToken,
+      refreshToken: refreshToken,
+    ),
+  );
 }
 
 class MyApp extends StatelessWidget {
   final String? accessToken;
   final String? refreshToken;
 
-  const MyApp({super.key, this.accessToken, this.refreshToken});
+  const MyApp({
+    super.key,
+    this.accessToken,
+    this.refreshToken,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -32,7 +41,9 @@ class MyApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       title: 'Study Buddies',
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.teal),
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: Colors.teal,
+        ),
         useMaterial3: true,
       ),
       home: accessToken != null && refreshToken != null

@@ -3,10 +3,9 @@ from fastapi import Header, HTTPException
 from app.services.supabase_service import get_supabase_client
 
 
-def get_current_user_id(
+def get_current_user(
     authorization: str | None = Header(default=None),
-) -> str:
-
+):
     if not authorization:
         raise HTTPException(
             status_code=401,
@@ -29,7 +28,6 @@ def get_current_user_id(
 
     try:
         supabase = get_supabase_client()
-
         response = supabase.auth.get_user(access_token)
 
         if response.user is None:
@@ -38,7 +36,7 @@ def get_current_user_id(
                 detail="Invalid or expired access token.",
             )
 
-        return response.user.id
+        return response.user
 
     except HTTPException:
         raise
@@ -48,8 +46,15 @@ def get_current_user_id(
             "AUTHENTICATION ERROR:",
             repr(error),
         )
-
         raise HTTPException(
             status_code=401,
             detail="Invalid or expired access token.",
         ) from error
+
+
+def get_current_user_id(
+    authorization: str | None = Header(default=None),
+) -> str:
+    user = get_current_user(authorization)
+
+    return user.id

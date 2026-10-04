@@ -1,7 +1,10 @@
 import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+
 import 'register_screen.dart';
+import '../profile/profile.dart';
 import 'login_otp_screen.dart';
 import '../widgets/bottom_navigation_bar.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -23,10 +26,11 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final emailController = TextEditingController();
   final passwordController = TextEditingController();
+
   final baseUrl = dotenv.env['API_BASE_URL']!;
   final storage = const FlutterSecureStorage();
 
-  bool rememberMe = false;  
+  bool rememberMe = false;
   bool isLoading = false;
   bool isPasswordVisible = false;
 
@@ -36,6 +40,7 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> login() async {
     final email = emailController.text.trim();
     final password = passwordController.text;
+
     final errors = <String>[];
 
     if (email.isEmpty) {
@@ -95,18 +100,19 @@ class _LoginScreenState extends State<LoginScreen> {
           await storage.delete(key: 'remembered_email');
           await storage.delete(key: 'remembered_password');
         }
-        // Login is successful, but the backend now requires OTP.
+
+        // Login is successful, but the backend may require OTP.
         if (data['otp_required'] == true) {
           if (!mounted) return;
 
           await Navigator.push(
-          context,
-          MaterialPageRoute(
+            context,
+            MaterialPageRoute(
               builder: (context) => LoginOtpScreen(
                 email: data['email'] as String,
+              ),
             ),
-          ),
-        );
+          );
 
           if (!mounted) return;
 
@@ -117,10 +123,7 @@ class _LoginScreenState extends State<LoginScreen> {
           return;
         }
 
-        // ---------------------------------------------------------
-        // OTP disabled → login directly
-        // ---------------------------------------------------------
-
+        // OTP disabled → login directly.
         final accessToken = data['access_token'];
         final refreshToken = data['refresh_token'];
 
@@ -132,27 +135,88 @@ class _LoginScreenState extends State<LoginScreen> {
           return;
         }
 
-        await storage.write(key: 'access_token', value: accessToken);
+        await storage.write(
+          key: 'access_token',
+          value: accessToken,
+        );
 
-        await storage.write(key: 'refresh_token', value: refreshToken);
+        await storage.write(
+          key: 'refresh_token',
+          value: refreshToken,
+        );
+
+        // Check whether the user has completed their profile.
+        final profileResponse = await http.get(
+          Uri.parse('$baseUrl/profile/status'),
+          headers: {
+            'Authorization': 'Bearer $accessToken',
+          },
+        );
 
         if (!mounted) return;
 
-        Navigator.pushAndRemoveUntil(
-          context,
-          MaterialPageRoute(
-            builder: (_) => AppBottomNavigationBar(
-              apiBaseUrl: baseUrl,
-              accessToken: accessToken,
-              refreshToken: refreshToken,
+        if (profileResponse.statusCode == 200) {
+          final profileData = jsonDecode(profileResponse.body);
+
+          final profileCompleted =
+              profileData['profile_completed'] == true;
+
+          if (profileCompleted) {
+            // Profile already exists → go to the main app.
+            Navigator.pushAndRemoveUntil(
+              context,
+              MaterialPageRoute(
+                builder: (_) => AppBottomNavigationBar(
+                  apiBaseUrl: baseUrl,
+                  accessToken: accessToken,
+                  refreshToken: refreshToken,
+                ),
+              ),
+              (route) => false,
+            );
+          } else {
+            // First login → complete profile first.
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (context) => ProfilePage(
+                  apiBaseUrl: baseUrl,
+                  accessToken: accessToken,
+
+                  // After the profile is saved,
+                  // open the main app with the bottom taskbar.
+                  onProfileSaved: () {
+                    Navigator.pushAndRemoveUntil(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => AppBottomNavigationBar(
+                          apiBaseUrl: baseUrl,
+                          accessToken: accessToken,
+                          refreshToken: refreshToken,
+                        ),
+                      ),
+                      (route) => false,
+                    );
+                  },
+                ),
+              ),
+            );
+          }
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Could not check your profile.'),
             ),
-          ),
-          (route) => false,
-        );
+          );
+
+          setState(() {
+            isLoading = false;
+          });
+        }
 
         return;
       } else {
-        String errorMessage = 'Invalid email or password';
+        var errorMessage = 'Login failed';
 
         if (data is Map<String, dynamic> &&
             data['detail'] != null) {
@@ -175,8 +239,11 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _loadSavedLogin() async {
-    final savedEmail = await storage.read(key: 'remembered_email');
-    final savedPassword = await storage.read(key: 'remembered_password');
+    final savedEmail =
+        await storage.read(key: 'remembered_email');
+
+    final savedPassword =
+        await storage.read(key: 'remembered_password');
 
     if (!mounted) return;
 
@@ -220,7 +287,6 @@ class _LoginScreenState extends State<LoginScreen> {
           horizontal: 40,
           vertical: 0,
         ),
-
         children: [
           const SizedBox(height: 40),
 
@@ -230,6 +296,7 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
 
           const SizedBox(height: 30),
+
           if (successMessage != null)
             Container(
               margin: const EdgeInsets.only(bottom: 20),
@@ -250,7 +317,9 @@ class _LoginScreenState extends State<LoginScreen> {
                     color: Colors.green,
                     size: 20,
                   ),
+
                   const SizedBox(width: 8),
+
                   Expanded(
                     child: Text(
                       successMessage!,
@@ -285,7 +354,9 @@ class _LoginScreenState extends State<LoginScreen> {
                     color: Colors.red,
                     size: 20,
                   ),
+
                   const SizedBox(width: 8),
+
                   Expanded(
                     child: Text(
                       formError!,
@@ -299,7 +370,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 ],
               ),
             ),
-            
+
           const Text(
             'Email',
             style: TextStyle(
@@ -309,17 +380,14 @@ class _LoginScreenState extends State<LoginScreen> {
               fontStyle: FontStyle.italic,
             ),
           ),
-          
+
           TextField(
             controller: emailController,
-
             keyboardType: TextInputType.emailAddress,
-
             style: const TextStyle(
               color: Colors.black,
               fontSize: 14,
             ),
-
             decoration: InputDecoration(
               hintText: 'Enter your email',
               hintStyle: const TextStyle(
@@ -350,17 +418,13 @@ class _LoginScreenState extends State<LoginScreen> {
             ),
           ),
 
-
           TextField(
             controller: passwordController,
-
             obscureText: !isPasswordVisible,
-            
             style: const TextStyle(
               color: Colors.black,
               fontSize: 14,
             ),
-
             decoration: InputDecoration(
               hintText: 'Enter your password',
               hintStyle: const TextStyle(
@@ -392,7 +456,7 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
             ),
           ),
-          
+
           Row(
             children: [
               Checkbox(
@@ -405,21 +469,33 @@ class _LoginScreenState extends State<LoginScreen> {
                   });
 
                   if (!isChecked) {
-                    await storage.delete(key: 'remembered_email');
-                    await storage.delete(key: 'remembered_password');
+                    await storage.delete(
+                      key: 'remembered_email',
+                    );
+
+                    await storage.delete(
+                      key: 'remembered_password',
+                    );
                   }
                 },
-                side: const BorderSide(color: Colors.white),
+                side: const BorderSide(
+                  color: Colors.white,
+                ),
                 checkColor: Colors.black,
-                fillColor: WidgetStateProperty.resolveWith(
+                fillColor:
+                    WidgetStateProperty.resolveWith(
                   (states) {
-                    if (states.contains(WidgetState.selected)) {
+                    if (states.contains(
+                      WidgetState.selected,
+                    )) {
                       return Colors.white;
                     }
+
                     return Colors.transparent;
                   },
                 ),
               ),
+
               const Text(
                 'Remember me',
                 style: TextStyle(
@@ -439,7 +515,9 @@ class _LoginScreenState extends State<LoginScreen> {
               disabledBackgroundColor: Colors.blue,
             ),
             child: Text(
-              isLoading ? 'Checking credentials...' : 'Login',
+              isLoading
+                  ? 'Checking credentials...'
+                  : 'Login',
               style: const TextStyle(
                 color: Colors.white,
                 fontSize: 15,
@@ -447,6 +525,7 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
             ),
           ),
+
           const SizedBox(height: 8),
 
           Center(
@@ -455,7 +534,8 @@ class _LoginScreenState extends State<LoginScreen> {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (context) => const ForgotPasswordScreen(),
+                    builder: (context) =>
+                        const ForgotPasswordScreen(),
                   ),
                 );
               },
@@ -469,6 +549,7 @@ class _LoginScreenState extends State<LoginScreen> {
               ),
             ),
           ),
+
           const SizedBox(height: 8),
 
           Center(
@@ -482,6 +563,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       fontSize: 14,
                     ),
                   ),
+
                   WidgetSpan(
                     alignment: PlaceholderAlignment.baseline,
                     baseline: TextBaseline.alphabetic,
@@ -490,7 +572,8 @@ class _LoginScreenState extends State<LoginScreen> {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (context) => const RegisterScreen(),
+                            builder: (context) =>
+                                const RegisterScreen(),
                           ),
                         );
                       },
