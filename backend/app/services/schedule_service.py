@@ -4,7 +4,13 @@ from pathlib import Path
 from typing import Any
 
 from app.config import get_settings
-from app.schemas.schedule import ScheduleItem, ScheduleItemCreate, ScheduleItemUpdate
+from app.schemas.schedule import (
+    Reminder,
+    ReminderReplace,
+    ScheduleItem,
+    ScheduleItemCreate,
+    ScheduleItemUpdate,
+)
 from app.services.supabase_service import get_supabase_client
 
 
@@ -109,6 +115,332 @@ def delete_schedule_item(
         return
 
     raise ValueError("item_type must be Assignment or Event")
+
+
+def list_reminders(
+    item_type: str,
+    item_id: int,
+    access_token: str | None = None,
+) -> list[Reminder]:
+    if get_settings().schedule_mock_json:
+        raise ValueError("Cannot load reminders while mock schedule JSON is enabled")
+
+    user_id = _require_user_id(access_token)
+    normalized_type = _normalize_item_type(item_type)
+    item_datetime = _schedule_item_datetime(
+        normalized_type,
+        item_id,
+        access_token=access_token,
+        user_id=user_id,
+    )
+
+    if item_datetime is None:
+        raise LookupError("Schedule item not found")
+
+    return _list_reminders_for_item(
+        normalized_type,
+        item_id,
+        access_token=access_token,
+        user_id=user_id,
+    )
+
+
+def replace_reminders(
+    item_type: str,
+    item_id: int,
+    payload: ReminderReplace,
+    access_token: str | None = None,
+) -> list[Reminder]:
+    if get_settings().schedule_mock_json:
+        raise ValueError("Cannot save reminders while mock schedule JSON is enabled")
+
+    user_id = _require_user_id(access_token)
+    normalized_type = _normalize_item_type(item_type)
+    item_datetime = _schedule_item_datetime(
+        normalized_type,
+        item_id,
+        access_token=access_token,
+        user_id=user_id,
+    )
+
+    if item_datetime is None:
+        raise LookupError("Schedule item not found")
+
+    minutes_before_values = _normalized_reminder_minutes(payload)
+    supabase = get_supabase_client()
+    supabase.postgrest.auth(access_token)
+
+    id_field = _reminder_item_id_field(normalized_type)
+
+    (
+        supabase.table("reminders")
+        .delete()
+        .eq("user_id", user_id)
+        .eq(id_field, item_id)
+        .execute()
+    )
+
+    if not minutes_before_values:
+        return []
+
+    rows = [
+        _reminder_insert_row(
+            item_type=normalized_type,
+            item_id=item_id,
+            user_id=user_id,
+            minutes_before=minutes_before,
+            item_datetime=item_datetime,
+        )
+        for minutes_before in minutes_before_values
+    ]
+
+    saved_rows = supabase.table("reminders").insert(rows).execute().data or []
+    return [_reminder_from_row(row) for row in saved_rows]
+
+
+def list_upcoming_reminders(access_token: str | None = None) -> list[Reminder]:
+    if get_settings().schedule_mock_json:
+        raise ValueError("Cannot load reminders while mock schedule JSON is enabled")
+
+    user_id = _require_user_id(access_token)
+    supabase = get_supabase_client()
+    supabase.postgrest.auth(access_token)
+
+    rows = (
+        supabase.table("reminders")
+        .select("*")
+        .eq("user_id", user_id)
+        .gte("remind_at", datetime.now().isoformat())
+        .order("remind_at")
+        .execute()
+        .data
+        or []
+    )
+
+    return [
+        _reminder_with_target_from_row(
+            row,
+            access_token=access_token,
+            user_id=user_id,
+        )
+        for row in rows
+    ]
+
+
+def _normalize_item_type(item_type: str) -> str:
+    normalized_type = item_type.strip().lower()
+
+    if normalized_type not in {"assignment", "event"}:
+        raise ValueError("item_type must be Assignment or Event")
+
+    return normalized_type
+
+
+def _reminder_item_id_field(item_type: str) -> str:
+    if item_type == "assignment":
+        return "assignment_id"
+
+    return "event_id"
+
+
+def _normalized_reminder_minutes(payload: ReminderReplace) -> list[int]:
+    if any(reminder.minutes_before < 0 for reminder in payload.reminders):
+        raise ValueError("minutes_before must be zero or greater")
+
+    values = {reminder.minutes_before for reminder in payload.reminders}
+
+    return sorted(values, reverse=True)
+
+
+def _reminder_type(minutes_before: int) -> str:
+    if minutes_before == 10080:
+        return "one_week"
+
+    if minutes_before == 4320:
+        return "three_days"
+
+    if minutes_before == 1440:
+        return "one_day"
+
+    return "custom"
+
+
+def _reminder_insert_row(
+    item_type: str,
+    item_id: int,
+    user_id: str,
+    minutes_before: int,
+    item_datetime: datetime,
+) -> dict[str, Any]:
+    remind_at = item_datetime - timedelta(minutes=minutes_before)
+    row: dict[str, Any] = {
+        "user_id": user_id,
+        "reminder_type": _reminder_type(minutes_before),
+        "minutes_before": minutes_before,
+        "remind_at": remind_at.isoformat(),
+        "updated_at": datetime.now().isoformat(),
+    }
+
+    if item_type == "assignment":
+        row["assignment_id"] = item_id
+    else:
+        row["event_id"] = item_id
+
+    return row
+
+
+def _list_reminders_for_item(
+    item_type: str,
+    item_id: int,
+    access_token: str,
+    user_id: str,
+) -> list[Reminder]:
+    supabase = get_supabase_client()
+    supabase.postgrest.auth(access_token)
+    id_field = _reminder_item_id_field(item_type)
+
+    rows = (
+        supabase.table("reminders")
+        .select("*")
+        .eq("user_id", user_id)
+        .eq(id_field, item_id)
+        .order("minutes_before", desc=True)
+        .execute()
+        .data
+        or []
+    )
+
+    return [_reminder_from_row(row) for row in rows]
+
+
+def _schedule_item_datetime(
+    item_type: str,
+    item_id: int,
+    access_token: str,
+    user_id: str,
+) -> datetime | None:
+    settings = get_settings()
+    supabase = get_supabase_client()
+    supabase.postgrest.auth(access_token)
+
+    if item_type == "assignment":
+        rows = (
+            supabase.table(settings.assignment_table)
+            .select("assignment_id,due_date")
+            .eq("assignment_id", item_id)
+            .eq(settings.user_id_field, user_id)
+            .execute()
+            .data
+            or []
+        )
+
+        return _parse_datetime(rows[0].get("due_date")) if rows else None
+
+    rows = (
+        supabase.table(settings.event_table)
+        .select("event_id,start_time")
+        .eq("event_id", item_id)
+        .eq(settings.user_id_field, user_id)
+        .execute()
+        .data
+        or []
+    )
+
+    return _parse_datetime(rows[0].get("start_time")) if rows else None
+
+
+def _reminder_from_row(row: dict[str, Any]) -> Reminder:
+    return Reminder(
+        reminder_id=int(row.get("reminder_id") or 0),
+        user_id=str(row.get("user_id") or ""),
+        assignment_id=row.get("assignment_id"),
+        event_id=row.get("event_id"),
+        target_type=row.get("target_type"),
+        target_id=row.get("target_id"),
+        title=row.get("title"),
+        reminder_type=str(row.get("reminder_type") or "custom"),
+        minutes_before=int(row.get("minutes_before") or 0),
+        remind_at=str(row.get("remind_at") or ""),
+        created_at=row.get("created_at"),
+        updated_at=row.get("updated_at"),
+    )
+
+
+def _reminder_with_target_from_row(
+    row: dict[str, Any],
+    access_token: str,
+    user_id: str,
+) -> Reminder:
+    assignment_id = row.get("assignment_id")
+    event_id = row.get("event_id")
+
+    if assignment_id is not None:
+        target_row = _schedule_item_row(
+            "assignment",
+            int(assignment_id),
+            access_token=access_token,
+            user_id=user_id,
+        )
+        row = {
+            **row,
+            "target_type": "assignment",
+            "target_id": str(assignment_id),
+            "title": target_row.get("title") if target_row else None,
+        }
+        return _reminder_from_row(row)
+
+    if event_id is not None:
+        target_row = _schedule_item_row(
+            "event",
+            int(event_id),
+            access_token=access_token,
+            user_id=user_id,
+        )
+        row = {
+            **row,
+            "target_type": "event",
+            "target_id": str(event_id),
+            "title": target_row.get("title") if target_row else None,
+        }
+        return _reminder_from_row(row)
+
+    return _reminder_from_row(row)
+
+
+def _schedule_item_row(
+    item_type: str,
+    item_id: int,
+    access_token: str,
+    user_id: str,
+) -> dict[str, Any] | None:
+    settings = get_settings()
+    supabase = get_supabase_client()
+    supabase.postgrest.auth(access_token)
+
+    if item_type == "assignment":
+        rows = (
+            supabase.table(settings.assignment_table)
+            .select("assignment_id,title,due_date")
+            .eq("assignment_id", item_id)
+            .eq(settings.user_id_field, user_id)
+            .execute()
+            .data
+            or []
+        )
+
+        return rows[0] if rows else None
+
+    rows = (
+        supabase.table(settings.event_table)
+        .select("event_id,title,start_time")
+        .eq("event_id", item_id)
+        .eq(settings.user_id_field, user_id)
+        .execute()
+        .data
+        or []
+    )
+
+    return rows[0] if rows else None
 
 
 def _list_mock_schedule_items() -> list[ScheduleItem]:

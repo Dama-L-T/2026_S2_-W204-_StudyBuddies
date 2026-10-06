@@ -59,6 +59,8 @@ class _AddScheduleItemScreenState extends State<AddScheduleItemScreen> {
   String _itemType = 'Event';
   DateTime _date = DateTime.now();
   TimeOfDay _time = TimeOfDay.now();
+  List<int> _reminderMinutes = defaultReminderMinuteOptions;
+  List<int> _savedReminderMinutes = const [];
   bool _isCompleted = false;
   bool _isLoading = false;
   String? _formError;
@@ -83,6 +85,30 @@ class _AddScheduleItemScreenState extends State<AddScheduleItemScreen> {
       _date = DateTime.tryParse(item.date) ?? DateTime.now();
       _time = _timeFromScheduleItem(item.time) ?? TimeOfDay.now();
       _isCompleted = item.status.toLowerCase() == 'completed';
+      _loadExistingReminderMinutes(item);
+    }
+  }
+
+  Future<void> _loadExistingReminderMinutes(StudyItem item) async {
+    try {
+      final minutes = await _fetchReminderMinutes(item);
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _reminderMinutes = minutes;
+        _savedReminderMinutes = minutes;
+      });
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _reminderMinutes = const [];
+        _savedReminderMinutes = const [];
+      });
     }
   }
 
@@ -221,6 +247,15 @@ class _AddScheduleItemScreenState extends State<AddScheduleItemScreen> {
               icon: Icons.schedule,
               onTap: _pickTime,
             ),
+            const SizedBox(height: 12),
+            _ReminderPickerTile(
+              value: _reminderMinutes,
+              onChanged: (minutes) {
+                setState(() {
+                  _reminderMinutes = minutes;
+                });
+              },
+            ),
             if (_itemType == 'Assignment') ...[
               const SizedBox(height: 12),
               Material(
@@ -332,6 +367,13 @@ class _AddScheduleItemScreenState extends State<AddScheduleItemScreen> {
       if (!mounted) return;
 
       if (response.statusCode == 200 || response.statusCode == 201) {
+        final savedItem = _savedItemFromResponse(response, draft);
+        if (savedItem != null) {
+          final savedReminderMinutes = await _saveReminders(savedItem);
+          await _scheduleReminder(savedItem, savedReminderMinutes);
+          if (!mounted) return;
+        }
+
         final message = widget.item == null
             ? 'Schedule item added'
             : 'Schedule item updated';
@@ -358,6 +400,167 @@ class _AddScheduleItemScreenState extends State<AddScheduleItemScreen> {
         });
       }
     }
+  }
+
+  StudyItem? _savedItemFromResponse(
+    http.Response response,
+    ScheduleItemDraft draft,
+  ) {
+    final decoded = jsonDecode(response.body);
+
+    if (decoded is Map<String, dynamic>) {
+      return StudyItem.fromJson(decoded);
+    }
+
+    final existingItem = widget.item;
+    if (existingItem == null) {
+      return null;
+    }
+
+    return StudyItem(
+      id: existingItem.id,
+      itemType: draft.itemType,
+      title: draft.title,
+      date: _dateForApi(draft.date),
+      time: _timeForApi(draft.time),
+      location: draft.location,
+      status: draft.isCompleted ? 'Completed' : '',
+      priority: existingItem.priority,
+    );
+  }
+
+  Future<void> _scheduleReminder(
+    StudyItem item,
+    List<int> reminderMinutes,
+  ) async {
+    final itemDateTime = _dateTimeFromScheduleItem(item);
+    if (itemDateTime == null) {
+      return;
+    }
+
+    final existingReminderMinutes = {
+      ..._savedReminderMinutes,
+      ..._reminderMinutes,
+    };
+
+    for (final minutesBefore in existingReminderMinutes) {
+      await notificationService.cancelNotification(
+        _notificationIdForScheduleItem(item, minutesBefore),
+      );
+    }
+
+    if (_isCompletedAssignment(item)) {
+      _savedReminderMinutes = const [];
+      return;
+    }
+
+    final isAssignment = item.itemType.toLowerCase() == 'assignment';
+
+    for (final minutesBefore in reminderMinutes) {
+      await notificationService.scheduleNotification(
+        id: _notificationIdForScheduleItem(item, minutesBefore),
+        title: isAssignment ? 'Assignment reminder' : 'Event reminder',
+        body: isAssignment
+            ? '${item.title} is due ${_reminderLeadTimeLabel(minutesBefore)}.'
+            : '${item.title} starts ${_reminderLeadTimeLabel(minutesBefore)}.',
+        scheduledTime: itemDateTime.subtract(Duration(minutes: minutesBefore)),
+        payload: isAssignment
+            ? notificationService.assignmentPayload(item.id)
+            : notificationService.eventPayload(item.id),
+      );
+    }
+
+    _savedReminderMinutes = reminderMinutes;
+    _reminderMinutes = reminderMinutes;
+  }
+
+  Future<List<int>> _fetchReminderMinutes(StudyItem item) async {
+    var response = await _reminderRequest(item);
+
+    if (response.statusCode == 401 && await _refreshSession()) {
+      response = await _reminderRequest(item);
+    }
+
+    if (response.statusCode == 404) {
+      return const [];
+    }
+
+    if (response.statusCode != 200) {
+      throw Exception(
+        _scheduleErrorMessage(
+          'Could not load reminders',
+          response.statusCode,
+          response.body,
+        ),
+      );
+    }
+
+    return _reminderMinutesFromResponse(response);
+  }
+
+  Future<List<int>> _saveReminders(StudyItem item) async {
+    final reminderMinutes = _isCompletedAssignment(item)
+        ? const <int>[]
+        : _sortedReminderMinutes(_reminderMinutes);
+    var response = await _reminderRequest(item, reminderMinutes);
+
+    if (response.statusCode == 401 && await _refreshSession()) {
+      response = await _reminderRequest(item, reminderMinutes);
+    }
+
+    if (response.statusCode != 200) {
+      throw Exception(
+        _scheduleErrorMessage(
+          'Could not save reminders',
+          response.statusCode,
+          response.body,
+        ),
+      );
+    }
+
+    return _reminderMinutesFromResponse(response);
+  }
+
+  Future<http.Response> _reminderRequest(
+    StudyItem item, [
+    List<int>? reminderMinutes,
+  ]) {
+    final uri = Uri.parse(
+      '${widget.apiBaseUrl}/schedule/${item.itemType.toLowerCase()}/${item.id}/reminders',
+    );
+    final headers = {
+      'Content-Type': 'application/json',
+      if (_accessToken != null) 'Authorization': 'Bearer $_accessToken',
+    };
+
+    if (reminderMinutes == null) {
+      return http.get(uri, headers: headers);
+    }
+
+    return http.put(
+      uri,
+      headers: headers,
+      body: jsonEncode({
+        'reminders': reminderMinutes
+            .map((minutesBefore) => {'minutes_before': minutesBefore})
+            .toList(),
+      }),
+    );
+  }
+
+  List<int> _reminderMinutesFromResponse(http.Response response) {
+    final decoded = jsonDecode(response.body);
+
+    if (decoded is! List) {
+      return const [];
+    }
+
+    return _sortedReminderMinutes(
+      decoded
+          .whereType<Map<String, dynamic>>()
+          .map((row) => int.tryParse(row['minutes_before'].toString()))
+          .whereType<int>(),
+    );
   }
 
   Future<http.Response> _saveScheduleItem(ScheduleItemDraft draft) {
@@ -447,6 +650,334 @@ class _SchedulePickerTile extends StatelessWidget {
           onTap: onTap,
         ),
       ),
+    );
+  }
+}
+
+class _ReminderPickerTile extends StatelessWidget {
+  const _ReminderPickerTile({
+    required this.value,
+    required this.onChanged,
+  });
+
+  final List<int> value;
+  final ValueChanged<List<int>> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(20),
+      child: ListTile(
+        title: const Text('Reminders'),
+        trailing: const Icon(Icons.notifications_outlined),
+        onTap: () => _showReminderPicker(context),
+      ),
+    );
+  }
+
+  Future<void> _showReminderPicker(BuildContext context) async {
+    final selectedMinutes = await showModalBottomSheet<List<int>>(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (context) => _ReminderPickerSheet(initialValue: value),
+    );
+
+    if (selectedMinutes != null) {
+      onChanged(selectedMinutes);
+    }
+  }
+}
+
+class _ReminderPickerSheet extends StatefulWidget {
+  const _ReminderPickerSheet({required this.initialValue});
+
+  final List<int> initialValue;
+
+  @override
+  State<_ReminderPickerSheet> createState() => _ReminderPickerSheetState();
+}
+
+class _ReminderPickerSheetState extends State<_ReminderPickerSheet> {
+  late final Set<int> _selectedValues;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedValues = widget.initialValue.toSet();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SafeArea(
+      child: ListView(
+        shrinkWrap: true,
+        children: [
+          const Padding(
+            padding: EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: Text(
+              'Reminders',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+          ),
+          ...reminderMinuteOptions.map(
+            (minutes) => CheckboxListTile(
+              value: _selectedValues.contains(minutes),
+              title: Text(_reminderOptionLabel(minutes)),
+              onChanged: (isSelected) {
+                setState(() {
+                  if (isSelected == true) {
+                    _selectedValues.add(minutes);
+                  } else {
+                    _selectedValues.remove(minutes);
+                  }
+                });
+              },
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+            child: Row(
+              children: [
+                const Expanded(
+                  child: Text(
+                    'Custom reminders',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                ),
+                TextButton.icon(
+                  onPressed: () => _openCustomReminderDialog(context),
+                  icon: const Icon(Icons.add),
+                  label: const Text('Add custom'),
+                ),
+              ],
+            ),
+          ),
+          ..._customReminderTiles(),
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: FilledButton(
+              onPressed: () => Navigator.pop(
+                context,
+                _sortedReminderMinutes(_selectedValues),
+              ),
+              child: const Text('Save'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  List<Widget> _customReminderTiles() {
+    final customValues = _selectedValues
+        .where((minutes) => !reminderMinuteOptions.contains(minutes))
+        .toList()
+      ..sort((first, second) => second.compareTo(first));
+
+    if (customValues.isEmpty) {
+      return const [];
+    }
+
+    return customValues
+        .map(
+          (minutes) => ListTile(
+            title: Text(_reminderOptionLabel(minutes)),
+            trailing: IconButton(
+              icon: const Icon(Icons.close),
+              tooltip: 'Remove reminder',
+              onPressed: () {
+                setState(() {
+                  _selectedValues.remove(minutes);
+                });
+              },
+            ),
+            onTap: () {
+              setState(() {
+                _selectedValues.remove(minutes);
+              });
+            },
+          ),
+        )
+        .toList();
+  }
+
+  Future<void> _openCustomReminderDialog(BuildContext context) async {
+    final minutes = await showDialog<int>(
+      context: context,
+      builder: (context) => const _CustomReminderDialog(),
+    );
+
+    if (!context.mounted || minutes == null) {
+      return;
+    }
+
+    setState(() {
+      _selectedValues.add(minutes);
+    });
+  }
+}
+
+class _CustomReminderDialog extends StatefulWidget {
+  const _CustomReminderDialog();
+
+  @override
+  State<_CustomReminderDialog> createState() => _CustomReminderDialogState();
+}
+
+class _CustomReminderDialogState extends State<_CustomReminderDialog> {
+  int _weeks = 0;
+  int _days = 0;
+  int _hours = 0;
+  int _minutes = 0;
+  String? _errorText;
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Custom reminder'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            height: 180,
+            width: 320,
+            child: Row(
+              children: [
+                Expanded(
+                  child: _CustomReminderPickerColumn(
+                    label: 'Weeks',
+                    maxValue: 52,
+                    onSelectedItemChanged: (value) {
+                      setState(() {
+                        _weeks = value;
+                        _errorText = null;
+                      });
+                    },
+                  ),
+                ),
+                Expanded(
+                  child: _CustomReminderPickerColumn(
+                    label: 'Days',
+                    maxValue: 6,
+                    onSelectedItemChanged: (value) {
+                      setState(() {
+                        _days = value;
+                        _errorText = null;
+                      });
+                    },
+                  ),
+                ),
+                Expanded(
+                  child: _CustomReminderPickerColumn(
+                    label: 'Hours',
+                    maxValue: 23,
+                    onSelectedItemChanged: (value) {
+                      setState(() {
+                        _hours = value;
+                        _errorText = null;
+                      });
+                    },
+                  ),
+                ),
+                Expanded(
+                  child: _CustomReminderPickerColumn(
+                    label: 'Minutes',
+                    maxValue: 59,
+                    onSelectedItemChanged: (value) {
+                      setState(() {
+                        _minutes = value;
+                        _errorText = null;
+                      });
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (_errorText != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              _errorText!,
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
+          ],
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: _addCustomReminder,
+          child: const Text('Add'),
+        ),
+      ],
+    );
+  }
+
+  void _addCustomReminder() {
+    final totalMinutes =
+        (_weeks * 7 * 24 * 60) +
+        (_days * 24 * 60) +
+        (_hours * 60) +
+        _minutes;
+
+    if (totalMinutes <= 0) {
+      setState(() {
+        _errorText = 'Enter at least one value.';
+      });
+      return;
+    }
+
+    Navigator.pop(context, totalMinutes);
+  }
+}
+
+class _CustomReminderPickerColumn extends StatelessWidget {
+  const _CustomReminderPickerColumn({
+    required this.label,
+    required this.maxValue,
+    required this.onSelectedItemChanged,
+  });
+
+  final String label;
+  final int maxValue;
+  final ValueChanged<int> onSelectedItemChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final textStyle = Theme.of(context).textTheme.bodyLarge;
+    final valueCount = maxValue + 1;
+    final initialItem = valueCount * 1000;
+
+    return Column(
+      children: [
+        Text(label, style: Theme.of(context).textTheme.labelMedium),
+        const SizedBox(height: 8),
+        Expanded(
+          child: CupertinoPicker(
+            itemExtent: 36,
+            magnification: 1.08,
+            squeeze: 1.1,
+            useMagnifier: true,
+            scrollController: FixedExtentScrollController(
+              initialItem: initialItem,
+            ),
+            onSelectedItemChanged: (index) {
+              onSelectedItemChanged(index % valueCount);
+            },
+            children: List.generate(
+              valueCount * 2000,
+              (index) => Center(
+                child: Text('${index % valueCount}', style: textStyle),
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

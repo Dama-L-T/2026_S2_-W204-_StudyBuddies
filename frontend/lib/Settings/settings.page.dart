@@ -192,6 +192,7 @@ class _SettingsPageState extends State<SettingsPage> {
                       : _updateLoginOtpSetting,
                 ),
           ),
+
         ],
       ),
     );
