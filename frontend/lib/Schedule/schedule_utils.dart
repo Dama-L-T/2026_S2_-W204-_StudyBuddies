@@ -40,6 +40,81 @@ TimeOfDay? _timeFromScheduleItem(String value) {
   return TimeOfDay(hour: hour, minute: minute);
 }
 
+DateTime? _dateTimeFromScheduleItem(StudyItem item) {
+  final date = DateTime.tryParse(item.date);
+  final time = _timeFromScheduleItem(item.time);
+
+  if (date == null || time == null) {
+    return null;
+  }
+
+  return DateTime(date.year, date.month, date.day, time.hour, time.minute);
+}
+
+bool _isCompletedAssignment(StudyItem item) {
+  return item.itemType.toLowerCase() == 'assignment' &&
+      item.status.toLowerCase() == 'completed';
+}
+
+String _notificationItemKey(StudyItem item) {
+  return '${item.itemType.toLowerCase()}:${item.id}';
+}
+
+int _notificationIdForScheduleItem(StudyItem item, int minutesBefore) {
+  return notificationService.notificationIdFromText(
+    '${_notificationItemKey(item)}:$minutesBefore',
+  );
+}
+
+String _reminderLeadTimeLabel(int minutesBefore) {
+  if (minutesBefore == 0) {
+    return 'now';
+  }
+
+  if (minutesBefore >= 1440 && minutesBefore % 1440 == 0) {
+    final days = minutesBefore ~/ 1440;
+    if (days == 7) {
+      return 'in 1 week';
+    }
+
+    return 'in $days day${days == 1 ? '' : 's'}';
+  }
+
+  if (minutesBefore >= 60 && minutesBefore % 60 == 0) {
+    final hours = minutesBefore ~/ 60;
+    return 'in $hours hour${hours == 1 ? '' : 's'}';
+  }
+
+  return 'in $minutesBefore minute${minutesBefore == 1 ? '' : 's'}';
+}
+
+List<int> _sortedReminderMinutes(Iterable<int> values) {
+  return values.toSet().toList()
+    ..sort((first, second) => second.compareTo(first));
+}
+
+String _reminderOptionLabel(int minutes) {
+  if (minutes == 0) return 'At time';
+
+  var remainingMinutes = minutes;
+  final weeks = remainingMinutes ~/ 10080;
+  remainingMinutes %= 10080;
+  final days = remainingMinutes ~/ 1440;
+  remainingMinutes %= 1440;
+  final hours = remainingMinutes ~/ 60;
+  remainingMinutes %= 60;
+
+  final parts = [
+    if (weeks > 0) '$weeks week${weeks == 1 ? '' : 's'}',
+    if (days > 0) '$days day${days == 1 ? '' : 's'}',
+    if (hours > 0) '$hours hour${hours == 1 ? '' : 's'}',
+    if (remainingMinutes > 0)
+      '$remainingMinutes min${remainingMinutes == 1 ? '' : 's'}',
+  ];
+
+  return parts.join(' ');
+}
+
 String _assignmentUrgencyLabel(String priority) {
   final normalized = priority.trim().toLowerCase();
 

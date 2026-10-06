@@ -3,11 +3,20 @@ import logging
 from fastapi import APIRouter, HTTPException, Security
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from app.schemas.schedule import ScheduleItem, ScheduleItemCreate, ScheduleItemUpdate
+from app.schemas.schedule import (
+    Reminder,
+    ReminderReplace,
+    ScheduleItem,
+    ScheduleItemCreate,
+    ScheduleItemUpdate,
+)
 from app.services.schedule_service import (
     create_schedule_item,
     delete_schedule_item,
+    list_reminders,
     list_schedule_items,
+    list_upcoming_reminders,
+    replace_reminders,
     update_schedule_item,
 )
 
@@ -79,6 +88,81 @@ def put_schedule_item(
         raise HTTPException(
             status_code=500,
             detail=f"Could not update schedule item: {error}",
+        ) from error
+
+
+@router.get("/reminders", response_model=list[Reminder])
+def get_upcoming_reminders(
+    credentials: HTTPAuthorizationCredentials | None = Security(auth_scheme),
+) -> list[Reminder]:
+    try:
+        access_token = credentials.credentials if credentials else None
+        return list_upcoming_reminders(access_token=access_token)
+    except PermissionError as error:
+        raise HTTPException(status_code=401, detail=str(error)) from error
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    except Exception as error:
+        logger.exception("Could not load upcoming reminders")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Could not load upcoming reminders: {error}",
+        ) from error
+
+
+@router.get("/{item_type}/{item_id}/reminders", response_model=list[Reminder])
+def get_schedule_item_reminders(
+    item_type: str,
+    item_id: int,
+    credentials: HTTPAuthorizationCredentials | None = Security(auth_scheme),
+) -> list[Reminder]:
+    try:
+        access_token = credentials.credentials if credentials else None
+        return list_reminders(
+            item_type,
+            item_id,
+            access_token=access_token,
+        )
+    except PermissionError as error:
+        raise HTTPException(status_code=401, detail=str(error)) from error
+    except LookupError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    except Exception as error:
+        logger.exception("Could not load reminders")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Could not load reminders: {error}",
+        ) from error
+
+
+@router.put("/{item_type}/{item_id}/reminders", response_model=list[Reminder])
+def put_schedule_item_reminders(
+    item_type: str,
+    item_id: int,
+    payload: ReminderReplace,
+    credentials: HTTPAuthorizationCredentials | None = Security(auth_scheme),
+) -> list[Reminder]:
+    try:
+        access_token = credentials.credentials if credentials else None
+        return replace_reminders(
+            item_type,
+            item_id,
+            payload,
+            access_token=access_token,
+        )
+    except PermissionError as error:
+        raise HTTPException(status_code=401, detail=str(error)) from error
+    except LookupError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    except Exception as error:
+        logger.exception("Could not save reminders")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Could not save reminders: {error}",
         ) from error
 
 

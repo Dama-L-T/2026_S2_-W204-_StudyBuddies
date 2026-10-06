@@ -1,10 +1,13 @@
 import 'dart:ui';
+import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../Schedule/schedule.page.dart';
 import '../Settings/settings.page.dart';
+import '../service/notifications_service.dart';
+import '../service/reminder_sync_service.dart';
 // import matchmaking, communication, profile, and settings pages when implemented
 
 class AppBottomNavigationBar extends StatefulWidget {
@@ -13,11 +16,13 @@ class AppBottomNavigationBar extends StatefulWidget {
     required this.apiBaseUrl,
     required this.accessToken,
     required this.refreshToken,
+    this.initialNotificationPayload,
   });
 
   final String apiBaseUrl;
   final String accessToken;
   final String refreshToken;
+  final String? initialNotificationPayload;
 
   @override
   State<AppBottomNavigationBar> createState() => _AppBottomNavigationBarState();
@@ -28,6 +33,7 @@ class _AppBottomNavigationBarState extends State<AppBottomNavigationBar> {
 
   int currentIndex = 0;
   int _schedulePageVersion = 0;
+  NotificationTarget? _scheduleNotificationTarget;
   late String _accessToken;
   late String _refreshToken;
 
@@ -37,6 +43,38 @@ class _AppBottomNavigationBarState extends State<AppBottomNavigationBar> {
 
     _accessToken = widget.accessToken;
     _refreshToken = widget.refreshToken;
+    _applyNotificationPayload(widget.initialNotificationPayload);
+    notificationService.onNotificationTapped = _handleNotificationPayload;
+    unawaited(_syncReminderNotifications());
+  }
+
+  @override
+  void dispose() {
+    if (notificationService.onNotificationTapped == _handleNotificationPayload) {
+      notificationService.onNotificationTapped = null;
+    }
+    super.dispose();
+  }
+
+  void _handleNotificationPayload(String? payload) {
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _applyNotificationPayload(payload);
+    });
+  }
+
+  void _applyNotificationPayload(String? payload) {
+    final target = NotificationTarget.parse(payload);
+    if (target == null) {
+      return;
+    }
+
+    currentIndex = 0;
+    _scheduleNotificationTarget = target;
+    _schedulePageVersion++;
   }
 
   @override
@@ -174,6 +212,13 @@ class _AppBottomNavigationBarState extends State<AppBottomNavigationBar> {
     _refreshToken = refreshToken;
   }
 
+  Future<void> _syncReminderNotifications() async {
+    await reminderSyncService.syncUpcomingReminders(
+      apiBaseUrl: widget.apiBaseUrl,
+      accessToken: _accessToken,
+    );
+  }
+
   Widget _buildPage(int index) {
     switch (index) {
       case 0:
@@ -182,6 +227,7 @@ class _AppBottomNavigationBarState extends State<AppBottomNavigationBar> {
           apiBaseUrl: widget.apiBaseUrl,
           accessToken: _accessToken,
           refreshToken: _refreshToken,
+          notificationTarget: _scheduleNotificationTarget,
         );
       case 1:
         return const Center(child: Text('Matchmaking Page'));
