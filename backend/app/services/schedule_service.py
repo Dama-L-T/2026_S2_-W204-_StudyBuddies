@@ -199,7 +199,7 @@ def _create_assignment(
         settings.user_id_field: user_id,
         "title": payload.title.strip(),
         "due_date": due_date.isoformat(),
-        "priority": _assignment_priority(due_date),
+        "priority": _assignment_priority(payload.priority),
         "status": _assignment_status(payload.is_completed),
     }
 
@@ -259,7 +259,7 @@ def _update_assignment(
     row = {
         "title": payload.title.strip(),
         "due_date": due_date.isoformat(),
-        "priority": _assignment_priority(due_date),
+        "priority": _assignment_priority(payload.priority),
         "status": _assignment_status(payload.is_completed),
         "updated_at": datetime.now().isoformat(),
     }
@@ -377,16 +377,13 @@ def _event_time(row: dict[str, Any]) -> str:
     return start_time or "Time TBC"
 
 
-def _assignment_priority(due_date: datetime) -> str:
-    time_until_due = due_date - datetime.now(due_date.tzinfo)
+def _assignment_priority(selected_priority: str) -> str:
+    normalized_priority = selected_priority.strip().lower()
 
-    if time_until_due <= timedelta(days=1):
-        return "high"
+    if normalized_priority in {"high", "medium", "low"}:
+        return normalized_priority
 
-    if time_until_due <= timedelta(days=7):
-        return "medium"
-
-    return "low"
+    raise ValueError("priority must be high, medium, or low")
 
 
 def _assignment_status(is_completed: bool) -> str:

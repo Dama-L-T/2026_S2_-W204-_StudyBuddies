@@ -1,5 +1,7 @@
 part of 'schedule.page.dart';
 
+const _assignmentPriorityOptions = ['low', 'medium', 'high'];
+
 String _dateForApi(DateTime value) {
   return [
     value.year.toString().padLeft(4, '0'),
@@ -51,6 +53,43 @@ String _assignmentUrgencyLabel(String priority) {
     'low' => 'Low urgency',
     _ => '${normalized[0].toUpperCase()}${normalized.substring(1)} urgency',
   };
+}
+
+String _effectiveAssignmentUrgencyLabel(StudyItem item) {
+  final dueAt = _assignmentDueDateTime(item);
+
+  if (dueAt != null && dueAt.difference(DateTime.now()) <= const Duration(days: 1)) {
+    return 'High urgency';
+  }
+
+  return _assignmentUrgencyLabel(item.priority);
+}
+
+DateTime? _assignmentDueDateTime(StudyItem item) {
+  final date = DateTime.tryParse(item.date);
+  final time = _timeFromScheduleItem(item.time);
+
+  if (date == null || time == null) {
+    return null;
+  }
+
+  return DateTime(date.year, date.month, date.day, time.hour, time.minute);
+}
+
+String _normalizedAssignmentPriority(String priority) {
+  final normalized = priority.trim().toLowerCase();
+
+  if (_assignmentPriorityOptions.contains(normalized)) {
+    return normalized;
+  }
+
+  return 'medium';
+}
+
+String _assignmentPriorityLabel(String priority) {
+  final normalized = _normalizedAssignmentPriority(priority);
+
+  return '${normalized[0].toUpperCase()}${normalized.substring(1)}';
 }
 
 String _scheduleErrorMessage(

@@ -7,6 +7,7 @@ class ScheduleItemDraft {
     required this.date,
     required this.time,
     required this.location,
+    required this.priority,
     required this.isCompleted,
   });
 
@@ -15,6 +16,7 @@ class ScheduleItemDraft {
   final DateTime date;
   final TimeOfDay time;
   final String location;
+  final String priority;
   final bool isCompleted;
 
   Map<String, dynamic> toJson() {
@@ -24,6 +26,7 @@ class ScheduleItemDraft {
       'date': _dateForApi(date),
       'time': _timeForApi(time),
       'location': location,
+      'priority': priority,
       'is_completed': isCompleted,
     };
   }
@@ -57,6 +60,7 @@ class _AddScheduleItemScreenState extends State<AddScheduleItemScreen> {
   String? _accessToken;
   String? _refreshToken;
   String _itemType = 'Event';
+  String _priority = 'medium';
   DateTime _date = DateTime.now();
   TimeOfDay _time = TimeOfDay.now();
   bool _isCompleted = false;
@@ -82,6 +86,7 @@ class _AddScheduleItemScreenState extends State<AddScheduleItemScreen> {
 
       _date = DateTime.tryParse(item.date) ?? DateTime.now();
       _time = _timeFromScheduleItem(item.time) ?? TimeOfDay.now();
+      _priority = _normalizedAssignmentPriority(item.priority);
       _isCompleted = item.status.toLowerCase() == 'completed';
     }
   }
@@ -162,6 +167,7 @@ class _AddScheduleItemScreenState extends State<AddScheduleItemScreen> {
 
                           if (_itemType == 'Assignment') {
                             _locationController.clear();
+                            _priority = 'medium';
                           } else {
                             _isCompleted = false;
                           }
@@ -222,6 +228,36 @@ class _AddScheduleItemScreenState extends State<AddScheduleItemScreen> {
               onTap: _pickTime,
             ),
             if (_itemType == 'Assignment') ...[
+              const SizedBox(height: 12),
+              const Text(
+                'Priority',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+              DropdownButtonFormField<String>(
+                initialValue: _priority,
+                dropdownColor: Colors.white,
+                decoration: _inputDecoration(),
+                items: _assignmentPriorityOptions
+                    .map(
+                      (priority) => DropdownMenuItem(
+                        value: priority,
+                        child: Text(_assignmentPriorityLabel(priority)),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (value) {
+                  if (value == null) return;
+
+                  setState(() {
+                    _priority = value;
+                  });
+                },
+              ),
               const SizedBox(height: 12),
               Material(
                 color: Colors.white,
@@ -319,6 +355,7 @@ class _AddScheduleItemScreenState extends State<AddScheduleItemScreen> {
       date: _date,
       time: _time,
       location: _locationController.text.trim(),
+      priority: _priority,
       isCompleted: _itemType == 'Assignment' && _isCompleted,
     );
 
