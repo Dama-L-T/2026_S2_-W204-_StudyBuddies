@@ -57,13 +57,17 @@ class LocalNotificationService {
     timezone_data.initializeTimeZones();
     await _setDeviceTimeZone();
 
+    const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
     const iosSettings = DarwinInitializationSettings(
       requestAlertPermission: true,
       requestBadgePermission: true,
       requestSoundPermission: true,
     );
 
-    const settings = InitializationSettings(iOS: iosSettings);
+    const settings = InitializationSettings(
+      android: androidSettings,
+      iOS: iosSettings,
+    );
 
     await _notifications.initialize(
       settings: settings,
@@ -71,6 +75,11 @@ class LocalNotificationService {
         onNotificationTapped?.call(response.payload);
       },
     );
+
+    await _notifications
+        .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>()
+        ?.requestNotificationsPermission();
 
     await _notifications
         .resolvePlatformSpecificImplementation<
@@ -171,6 +180,15 @@ class LocalNotificationService {
 
   NotificationDetails _notificationDetails() {
     return const NotificationDetails(
+      android: AndroidNotificationDetails(
+        'study_buddies_notifications',
+        'Study Buddies Notifications',
+        channelDescription: 'Notifications for assignments and events',
+        importance: Importance.high,
+        priority: Priority.high,
+        playSound: true,
+        enableVibration: true,
+      ),
       iOS: DarwinNotificationDetails(
         presentAlert: true,
         presentBadge: true,
