@@ -1,8 +1,10 @@
 import 'dart:convert';
 
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
+import '../service/notifications_service.dart';
 import '../widgets/app_bar.dart';
 
 part 'schedule_models.dart';
@@ -17,12 +19,14 @@ class SchedulerScreen extends StatefulWidget {
     this.accessToken,
     this.refreshToken,
     this.scheduleItems,
+    this.notificationTarget,
   });
 
   final String apiBaseUrl;
   final String? accessToken;
   final String? refreshToken;
   final Future<List<StudyItem>>? scheduleItems;
+  final NotificationTarget? notificationTarget;
 
   @override
   State<SchedulerScreen> createState() => _SchedulerScreenState();
@@ -33,6 +37,7 @@ class _SchedulerScreenState extends State<SchedulerScreen> {
   late Future<List<StudyItem>> _scheduleItems;
   String? _accessToken;
   String? _refreshToken;
+  NotificationTarget? _pendingNotificationTarget;
   DateTime _selectedDate = _dateOnly(DateTime.now());
 
   @override
@@ -40,12 +45,17 @@ class _SchedulerScreenState extends State<SchedulerScreen> {
     super.initState();
     _accessToken = widget.accessToken;
     _refreshToken = widget.refreshToken;
+    _pendingNotificationTarget = widget.notificationTarget;
     _scheduleItems = widget.scheduleItems ?? _fetchScheduleItems();
   }
 
   @override
   void didUpdateWidget(covariant SchedulerScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
+
+    if (oldWidget.notificationTarget != widget.notificationTarget) {
+      _pendingNotificationTarget = widget.notificationTarget;
+    }
 
     if (oldWidget.accessToken == widget.accessToken &&
         oldWidget.refreshToken == widget.refreshToken) {
@@ -173,6 +183,7 @@ class _SchedulerScreenState extends State<SchedulerScreen> {
 
     if (shouldDelete != true) return;
 
+    final reminderMinutes = await _fetchReminderMinutesForItem(item);
     var response = await _deleteScheduleItemRequest(item);
 
     if (response.statusCode == 401 && await _refreshSession()) {
@@ -182,6 +193,13 @@ class _SchedulerScreenState extends State<SchedulerScreen> {
     if (!mounted) return;
 
     if (response.statusCode == 204) {
+      for (final minutesBefore in reminderMinutes) {
+        await notificationService.cancelNotification(
+          _notificationIdForScheduleItem(item, minutesBefore),
+        );
+      }
+      if (!mounted) return;
+
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('Schedule item deleted')));
@@ -239,6 +257,7 @@ class _SchedulerScreenState extends State<SchedulerScreen> {
           }
 
           final items = snapshot.data ?? [];
+          _openPendingNotificationTarget(items);
           final selectedItems = items.where(_isItemOnSelectedDate).toList();
 
           if (items.isEmpty) {
@@ -361,6 +380,45 @@ class _SchedulerScreenState extends State<SchedulerScreen> {
     );
   }
 
+  Future<List<int>> _fetchReminderMinutesForItem(StudyItem item) async {
+    try {
+      var response = await _reminderRequest(item);
+
+      if (response.statusCode == 401 && await _refreshSession()) {
+        response = await _reminderRequest(item);
+      }
+
+      if (response.statusCode != 200) {
+        return const [];
+      }
+
+      final decoded = jsonDecode(response.body);
+      if (decoded is! List) {
+        return const [];
+      }
+
+      return _sortedReminderMinutes(
+        decoded
+            .whereType<Map<String, dynamic>>()
+            .map((row) => int.tryParse(row['minutes_before'].toString()))
+            .whereType<int>(),
+      );
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  Future<http.Response> _reminderRequest(StudyItem item) {
+    return http.get(
+      Uri.parse(
+        '${widget.apiBaseUrl}/schedule/${item.itemType.toLowerCase()}/${item.id}/reminders',
+      ),
+      headers: {
+        if (_accessToken != null) 'Authorization': 'Bearer $_accessToken',
+      },
+    );
+  }
+
   void _reloadScheduleItems() {
     setState(() {
       _scheduleItems = _fetchScheduleItems();
@@ -378,6 +436,43 @@ class _SchedulerScreenState extends State<SchedulerScreen> {
   void _selectDate(DateTime selectedDate) {
     setState(() {
       _selectedDate = _dateOnly(selectedDate);
+    });
+  }
+
+  void _openPendingNotificationTarget(List<StudyItem> items) {
+    final target = _pendingNotificationTarget;
+    if (target == null) {
+      return;
+    }
+
+    StudyItem? targetItem;
+    for (final item in items) {
+      if (target.matches(itemType: item.itemType, itemId: item.id)) {
+        targetItem = item;
+        break;
+      }
+    }
+
+    if (targetItem == null) {
+      return;
+    }
+
+    final itemToOpen = targetItem;
+    _pendingNotificationTarget = null;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) {
+        return;
+      }
+
+      final itemDate = DateTime.tryParse(itemToOpen.date);
+      if (itemDate != null) {
+        setState(() {
+          _selectedDate = _dateOnly(itemDate);
+        });
+      }
+
+      await _openScheduleItemDetails(itemToOpen);
     });
   }
 }
