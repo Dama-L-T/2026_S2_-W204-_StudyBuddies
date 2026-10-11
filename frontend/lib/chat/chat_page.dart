@@ -1,4 +1,5 @@
 
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -68,10 +69,16 @@ class _ChatPageState extends State<ChatPage> {
 
   Future<void> _refresh() async {
     final future = _loadConversations();
+
     setState(() {
       _conversations = future;
     });
-    await future;
+
+    try {
+      await future;
+    } catch (_) {
+      // FutureBuilder displays the error state.
+    }
   }
 
   Future<void> _openConversation(
@@ -200,7 +207,7 @@ class _ChatPageState extends State<ChatPage> {
                                   .onSurfaceVariant,
                         ),
                       ),
-                    ),                    
+                    ),
                     trailing: SizedBox(
                       width: 76,
                       child: Column(
@@ -212,7 +219,9 @@ class _ChatPageState extends State<ChatPage> {
                             _formatTime(conversation.lastMessageAt),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: Theme.of(context).textTheme.labelSmall,
+                            style: Theme.of(context)
+                                .textTheme
+                                .labelSmall,
                           ),
                           if (unread) ...[
                             const SizedBox(height: 6),
@@ -226,7 +235,9 @@ class _ChatPageState extends State<ChatPage> {
                                 vertical: 2,
                               ),
                               decoration: BoxDecoration(
-                                color: Theme.of(context).colorScheme.primary,
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .primary,
                                 borderRadius: BorderRadius.circular(12),
                               ),
                               alignment: Alignment.center,
@@ -235,7 +246,9 @@ class _ChatPageState extends State<ChatPage> {
                                     ? '99+'
                                     : '${conversation.unreadCount}',
                                 style: TextStyle(
-                                  color: Theme.of(context).colorScheme.onPrimary,
+                                  color: Theme.of(context)
+                                      .colorScheme
+                                      .onPrimary,
                                   fontSize: 11,
                                   fontWeight: FontWeight.bold,
                                 ),
@@ -329,16 +342,44 @@ class ChatConversationScreen extends StatefulWidget {
       _ChatConversationScreenState();
 }
 
-class _ChatConversationScreenState
-    extends State<ChatConversationScreen> {
-  late Future<List<ChatMessage>> _messages;
+class _ChatConversationScreenState extends State<ChatConversationScreen> {
+  List<ChatMessage> _messages = [];
+
+  final TextEditingController _messageController =
+      TextEditingController();
+
+  final ScrollController _scrollController = ScrollController();
+
+  Timer? _messagePollingTimer;
+
+  bool _isLoadingMessages = true;
+  bool _hasMessageError = false;
+  bool _isRefreshingMessages = false;
+  bool _isSending = false;
+
+  String? _sendError;
 
   @override
   void initState() {
     super.initState();
-    _messages = _loadMessages();
+
+    _loadInitialMessages();
+
+    // Poll for incoming messages without recreating the message list.
+    _messagePollingTimer = Timer.periodic(
+      const Duration(seconds: 2),
+      (_) => _refreshMessages(),
+    );
   }
-  
+
+  @override
+  void dispose() {
+    _messagePollingTimer?.cancel();
+    _messageController.dispose();
+    _scrollController.dispose();
+    super.dispose();
+  }
+
   Future<void> _markConversationRead() async {
     final response = await http.post(
       Uri.parse(
@@ -355,10 +396,31 @@ class _ChatConversationScreenState
     }
   }
 
-  Future<List<ChatMessage>> _loadMessages() async {
-    // Mark incoming messages as read before displaying the chat.
-    await _markConversationRead();
+  Future<void> _loadInitialMessages() async {
+    try {
+      await _markConversationRead();
+      final messages = await _fetchMessages();
 
+      if (!mounted) return;
+
+      setState(() {
+        _messages = messages;
+        _isLoadingMessages = false;
+        _hasMessageError = false;
+      });
+
+      _scrollToBottom();
+    } catch (_) {
+      if (!mounted) return;
+
+      setState(() {
+        _isLoadingMessages = false;
+        _hasMessageError = true;
+      });
+    }
+  }
+
+  Future<List<ChatMessage>> _fetchMessages() async {
     final response = await http.get(
       Uri.parse(
         '${widget.apiBaseUrl}/chat/conversations/'
@@ -390,14 +452,137 @@ class _ChatConversationScreenState
       if (b.createdAt == null) return 1;
 
       final comparison = a.createdAt!.compareTo(b.createdAt!);
-      return comparison != 0
-          ? comparison
-          : a.id.compareTo(b.id);
+      return comparison != 0 ? comparison : a.id.compareTo(b.id);
     });
 
     return messages;
   }
 
+  bool _messagesChanged(List<ChatMessage> incoming) {
+    if (incoming.length != _messages.length) return true;
+
+    for (var i = 0; i < incoming.length; i++) {
+      final oldMessage = _messages[i];
+      final newMessage = incoming[i];
+
+      if (oldMessage.id != newMessage.id ||
+          oldMessage.content != newMessage.content ||
+          oldMessage.isMine != newMessage.isMine ||
+          oldMessage.senderName != newMessage.senderName ||
+          oldMessage.createdAt != newMessage.createdAt) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  Future<void> _refreshMessages() async {
+    if (!mounted || _isSending || _isRefreshingMessages) return;
+
+    _isRefreshingMessages = true;
+
+    try {
+      final messages = await _fetchMessages();
+
+      if (!mounted) return;
+
+      if (!_messagesChanged(messages)) return;
+
+      // Record whether the user is already near the latest message.
+      final wasNearBottom = _scrollController.hasClients &&
+          (_scrollController.position.maxScrollExtent -
+                  _scrollController.position.pixels <
+              100);
+
+      setState(() {
+        _messages = messages;
+        _hasMessageError = false;
+      });
+
+      // Only scroll automatically when the user was near the bottom.
+      if (wasNearBottom) {
+        _scrollToBottom();
+      }
+    } catch (_) {
+      // Keep current messages visible if polling fails.
+    } finally {
+      _isRefreshingMessages = false;
+    }
+  }
+
+  void _scrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_scrollController.hasClients) return;
+
+      _scrollController.animateTo(
+        _scrollController.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeOut,
+      );
+    });
+  }
+
+  Future<void> _sendMessage() async {
+    final content = _messageController.text.trim();
+
+    if (content.isEmpty || _isSending) return;
+
+    setState(() {
+      _isSending = true;
+      _sendError = null;
+    });
+
+    try {
+      final response = await http.post(
+        Uri.parse(
+          '${widget.apiBaseUrl}/chat/conversations/'
+          '${Uri.encodeComponent(widget.conversation.id)}/messages',
+        ),
+        headers: {
+          'Authorization': 'Bearer ${widget.accessToken}',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({'content': content}),
+      );
+
+      if (response.statusCode != 200 &&
+          response.statusCode != 201) {
+        throw Exception('Could not send message');
+      }
+
+      _messageController.clear();
+
+      // Fetch immediately so the sent message appears without waiting
+      // for the next polling interval.
+      await _refreshMessages();
+
+      // If polling was skipped because sending was still in progress,
+      // fetch and update the messages now.
+      final messages = await _fetchMessages();
+
+      if (!mounted) return;
+
+      setState(() {
+        _messages = messages;
+        _hasMessageError = false;
+      });
+
+      _scrollToBottom();
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _sendError = 'Message could not be sent. Please try again.';
+        });
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSending = false;
+        });
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -406,59 +591,118 @@ class _ChatConversationScreenState
         title: widget.conversation.studentName,
         showBackButton: true,
       ),
-      body: FutureBuilder<List<ChatMessage>>(
-        future: _messages,
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const Center(
-              child: CircularProgressIndicator(),
-            );
-          }
+      body: Column(
+        children: [
+          Expanded(
+            child: _isLoadingMessages
+                ? const Center(
+                    child: CircularProgressIndicator(),
+                  )
+                : _hasMessageError
+                    ? _ChatMessage(
+                        icon: Icons.error_outline,
+                        title: 'Could not load messages',
+                        message: 'Please try again.',
+                        action: OutlinedButton.icon(
+                          onPressed: () {
+                            setState(() {
+                              _isLoadingMessages = true;
+                              _hasMessageError = false;
+                            });
+                            _loadInitialMessages();
+                          },
+                          icon: const Icon(Icons.refresh),
+                          label: const Text('Retry'),
+                        ),
+                      )
+                    : _messages.isEmpty
+                        ? const Center(
+                            child: Text(
+                              'No messages yet. Say hello!',
+                            ),
+                          )
+                        : ListView.builder(
+                            key: PageStorageKey(
+                              'chat-${widget.conversation.id}',
+                            ),
+                            controller: _scrollController,
+                            padding: const EdgeInsets.all(16),
+                            itemCount: _messages.length,
+                            itemBuilder: (context, index) {
+                              return _MessageBubble(
+                                message: _messages[index],
+                              );
+                            },
+                          ),
+          ),
 
-          if (snapshot.hasError) {
-            return _ChatMessage(
-              icon: Icons.error_outline,
-              title: 'Could not load messages',
-              message: 'Please try again.',
-              action: OutlinedButton.icon(
-                onPressed: () {
-                  setState(() {
-                    _messages = _loadMessages();
-                  });
-                },
-                icon: const Icon(Icons.refresh),
-                label: const Text('Retry'),
+          if (_sendError != null)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Text(
+                _sendError!,
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.error,
+                ),
               ),
-            );
-          }
+            ),
 
-          final messages = snapshot.data ?? [];
-
-          if (messages.isEmpty) {
-            return const _ChatMessage(
-              icon: Icons.chat_bubble_outline,
-              title: 'No messages yet',
-              message: 'Previous messages will appear here.',
-            );
-          }
-
-          return ListView.builder(
-            padding: const EdgeInsets.all(16),
-            itemCount: messages.length,
-            itemBuilder: (context, index) {
-              final message = messages[index];
-
-              return _MessageBubble(message: message);
-            },
-          );
-        },
+          SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _messageController,
+                      textCapitalization:
+                          TextCapitalization.sentences,
+                      minLines: 1,
+                      maxLines: 4,
+                      onSubmitted: (_) => _sendMessage(),
+                      decoration: const InputDecoration(
+                        hintText: 'Type a message...',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.all(
+                            Radius.circular(24),
+                          ),
+                        ),
+                        contentPadding: EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  IconButton.filled(
+                    tooltip: 'Send message',
+                    onPressed: _isSending ? null : _sendMessage,
+                    icon: _isSending
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                            ),
+                          )
+                        : const Icon(Icons.send),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
 }
 
 class _MessageBubble extends StatelessWidget {
-  const _MessageBubble({required this.message});
+  const _MessageBubble({
+    required this.message,
+  });
 
   final ChatMessage message;
 
@@ -498,9 +742,7 @@ class _MessageBubble extends StatelessWidget {
             Text(message.content),
             const SizedBox(height: 5),
             Text(
-              _formatTime(
-                message.createdAt?.toIso8601String(),
-              ),
+              _formatTime(message.createdAt?.toIso8601String()),
               style: Theme.of(context).textTheme.labelSmall,
             ),
           ],
@@ -564,6 +806,7 @@ class _ChatMessage extends StatelessWidget {
 
 String _initials(String name) {
   final parts = name.trim().split(RegExp(r'\s+'));
+
   if (parts.isEmpty || parts.first.isEmpty) return '?';
   if (parts.length == 1) return parts.first[0].toUpperCase();
 
@@ -583,17 +826,14 @@ String _formatTime(String? value) {
       local.month == now.month &&
       local.day == now.day;
 
-  final yesterday = local.year == now.subtract(
-    const Duration(days: 1),
-  ).year &&
-      local.month == now.subtract(
-        const Duration(days: 1),
-      ).month &&
-      local.day == now.subtract(
-        const Duration(days: 1),
-      ).day;
+  final yesterdayDate = now.subtract(const Duration(days: 1));
 
-  String twoDigits(int number) => number.toString().padLeft(2, '0');
+  final yesterday = local.year == yesterdayDate.year &&
+      local.month == yesterdayDate.month &&
+      local.day == yesterdayDate.day;
+
+  String twoDigits(int number) =>
+      number.toString().padLeft(2, '0');
 
   if (sameDay) {
     return '${twoDigits(local.hour)}:${twoDigits(local.minute)}';

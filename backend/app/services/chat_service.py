@@ -200,3 +200,48 @@ def mark_conversation_read(
     ).execute()
 
     return {"message": "Conversation marked as read"}
+
+
+def send_message(
+    conversation_id: str,
+    user_id: str,
+    content: str,
+) -> dict:
+    client = _client()
+
+    # Verify that the authenticated student belongs to this conversation.
+    _get_conversation(client, conversation_id, user_id)
+
+    content = content.strip()
+    if not content:
+        raise HTTPException(
+            status_code=422,
+            detail="Message cannot be empty",
+        )
+
+    # Save the message using the authenticated student's ID.
+    result = (
+        client.table("chat_messages")
+        .insert({
+            "conversation_id": conversation_id,
+            "sender_id": user_id,
+            "content": content,
+        })
+        .execute()
+    )
+
+    if not result.data:
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to send message",
+        )
+
+    message = result.data[0]
+
+    return {
+        "id": str(message["id"]),
+        "sender_name": _profile_name(client, user_id),
+        "content": message["content"],
+        "created_at": message["created_at"],
+        "is_mine": True,
+    }

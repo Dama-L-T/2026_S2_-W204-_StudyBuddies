@@ -1,16 +1,14 @@
 
-# backend/app/routes/chat.py
-
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
 
 from app.services.chat_service import (
     list_conversations,
     list_messages,
     mark_conversation_read,
+    send_message,
 )
 
-# Use the same dependency import used by your existing
-# authenticated routes. This assumes it is defined here.
 from app.services.auth_dependency import get_current_user_id
 
 
@@ -18,6 +16,10 @@ router = APIRouter(
     prefix="/chat",
     tags=["Chat"],
 )
+
+
+class SendMessageRequest(BaseModel):
+    content: str = Field(min_length=1, max_length=5000)
 
 
 @router.get("/conversations")
@@ -35,6 +37,30 @@ def get_conversation_messages(
     return list_messages(
         conversation_id=conversation_id,
         user_id=str(user_id),
+    )
+
+
+@router.post(
+    "/conversations/{conversation_id}/messages",
+    status_code=201,
+)
+def create_message(
+    conversation_id: str,
+    body: SendMessageRequest,
+    user_id: str = Depends(get_current_user_id),
+):
+    content = body.content.strip()
+
+    if not content:
+        raise HTTPException(
+            status_code=422,
+            detail="Message cannot be empty",
+        )
+
+    return send_message(
+        conversation_id=conversation_id,
+        user_id=str(user_id),
+        content=content,
     )
 
 
