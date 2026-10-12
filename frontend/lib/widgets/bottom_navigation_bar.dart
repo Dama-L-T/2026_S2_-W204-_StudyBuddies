@@ -9,6 +9,7 @@ import '../Settings/settings.page.dart';
 import '../profile/profile.dart';
 import '../service/notifications_service.dart';
 import '../service/reminder_sync_service.dart';
+import '../chat/chat_page.dart';
 
 class AppBottomNavigationBar extends StatefulWidget {
   const AppBottomNavigationBar({
@@ -254,8 +255,9 @@ class _AppBottomNavigationBarState
         );
 
       case 2:
-        return const Center(
-          child: Text('Communication Page'),
+        return ChatPage(
+          apiBaseUrl: widget.apiBaseUrl,
+          accessToken: _accessToken,
         );
 
       case 3:
