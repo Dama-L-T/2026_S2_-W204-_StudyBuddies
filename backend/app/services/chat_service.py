@@ -1,6 +1,3 @@
-
-# backend/app/services/chat_service.py
-
 from datetime import datetime, timezone
 from typing import Any
 
@@ -84,7 +81,6 @@ def list_conversations(user_id: str) -> list[dict]:
 
     for conversation in result.data or []:
         conversation_id = str(conversation["id"])
-
         participant_one = str(conversation["participant_one_id"])
         participant_two = str(conversation["participant_two_id"])
 
@@ -213,13 +209,13 @@ def send_message(
     _get_conversation(client, conversation_id, user_id)
 
     content = content.strip()
+
     if not content:
         raise HTTPException(
             status_code=422,
             detail="Message cannot be empty",
         )
 
-    # Save the message using the authenticated student's ID.
     result = (
         client.table("chat_messages")
         .insert({
@@ -245,3 +241,136 @@ def send_message(
         "created_at": message["created_at"],
         "is_mine": True,
     }
+
+
+def edit_message(
+    conversation_id: str,
+    message_id: str,
+    user_id: str,
+    content: str,
+) -> dict:
+    client = _client()
+
+    # Confirm that the authenticated user belongs to the conversation.
+    _get_conversation(client, conversation_id, user_id)
+
+    content = content.strip()
+
+    if not content:
+        raise HTTPException(
+            status_code=422,
+            detail="Message cannot be empty",
+        )
+
+    if len(content) > 5000:
+        raise HTTPException(
+            status_code=422,
+            detail="Message cannot exceed 5000 characters",
+        )
+
+    # Find the message within the specified conversation.
+    result = (
+        client.table("chat_messages")
+        .select(
+            "id, conversation_id, sender_id, content, created_at"
+        )
+        .eq("id", message_id)
+        .eq("conversation_id", conversation_id)
+        .limit(1)
+        .execute()
+    )
+
+    if not result.data:
+        raise HTTPException(
+            status_code=404,
+            detail="Message not found",
+        )
+
+    message = result.data[0]
+
+    # Users can edit only messages they sent.
+    if str(message["sender_id"]) != user_id:
+        raise HTTPException(
+            status_code=403,
+            detail="You can only edit your own messages",
+        )
+
+    # Include sender_id in the update filter as an additional safeguard.
+    updated_result = (
+        client.table("chat_messages")
+        .update({"content": content})
+        .eq("id", message_id)
+        .eq("conversation_id", conversation_id)
+        .eq("sender_id", user_id)
+        .execute()
+    )
+
+    if not updated_result.data:
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to update message",
+        )
+
+    updated_message = updated_result.data[0]
+
+    return {
+        "id": str(updated_message["id"]),
+        "sender_name": _profile_name(client, user_id),
+        "content": updated_message["content"],
+        "created_at": updated_message["created_at"],
+        "is_mine": True,
+    }
+
+
+def delete_message(
+    conversation_id: str,
+    message_id: str,
+    user_id: str,
+) -> dict:
+    client = _client()
+
+    # Confirm that the authenticated user belongs to the conversation.
+    _get_conversation(client, conversation_id, user_id)
+
+    # Find the message within the specified conversation.
+    result = (
+        client.table("chat_messages")
+        .select("id, conversation_id, sender_id")
+        .eq("id", message_id)
+        .eq("conversation_id", conversation_id)
+        .limit(1)
+        .execute()
+    )
+
+    if not result.data:
+        raise HTTPException(
+            status_code=404,
+            detail="Message not found",
+        )
+
+    message = result.data[0]
+
+    # Users can delete only messages they sent.
+    if str(message["sender_id"]) != user_id:
+        raise HTTPException(
+            status_code=403,
+            detail="You can only delete your own messages",
+        )
+
+    # Restrict deletion to the authenticated sender's message.
+    deleted_result = (
+        client.table("chat_messages")
+        .delete()
+        .eq("id", message_id)
+        .eq("conversation_id", conversation_id)
+        .eq("sender_id", user_id)
+        .execute()
+    )
+
+    if not deleted_result.data:
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to delete message",
+        )
+
+    return {"message": "Message deleted"}

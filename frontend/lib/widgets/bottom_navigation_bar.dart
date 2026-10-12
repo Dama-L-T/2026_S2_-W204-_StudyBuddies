@@ -258,6 +258,7 @@ class _AppBottomNavigationBarState
         return ChatPage(
           apiBaseUrl: widget.apiBaseUrl,
           accessToken: _accessToken,
+          refreshToken: _refreshToken,
         );
 
       case 3:
