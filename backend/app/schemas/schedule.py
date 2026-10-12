@@ -18,6 +18,7 @@ class ScheduleItemCreate(BaseModel):
     date: str
     time: str
     location: str = ""
+    priority: str = "medium"
     is_completed: bool = False
 
 
@@ -26,6 +27,7 @@ class ScheduleItemUpdate(BaseModel):
     date: str
     time: str
     location: str = ""
+    priority: str = "medium"
     is_completed: bool = False
 
 

@@ -126,7 +126,7 @@ class ScheduleItemDetailScreen extends StatelessWidget {
     final status = item.status.toLowerCase() == 'completed'
         ? 'Completed'
         : 'Pending';
-    final urgency = _assignmentUrgencyLabel(item.priority);
+    final urgency = _effectiveAssignmentUrgencyLabel(item);
 
     return Scaffold(
       appBar: const AppBarWidget(title: 'Schedule Details', showBackButton: true),
@@ -225,7 +225,7 @@ class _StudyItemCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
     final isAssignment = item.itemType == 'Assignment';
-    final urgency = _assignmentUrgencyLabel(item.priority);
+    final urgency = _effectiveAssignmentUrgencyLabel(item);
 
     return Card(
       elevation: 0,
