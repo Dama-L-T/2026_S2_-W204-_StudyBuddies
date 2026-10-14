@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../Schedule/schedule.page.dart';
+import '../matchmaking/matchmaking.page.dart';
 import '../Settings/settings.page.dart';
 import '../profile/profile.dart';
 import '../service/notifications_service.dart';
@@ -161,7 +162,7 @@ class _AppBottomNavigationBarState
     return Expanded(
       child: GestureDetector(
         onTap: () async {
-          if (index == 0) {
+          if (index == 0 || index == 1) {
             await _loadStoredTokens();
           }
 
@@ -249,8 +250,9 @@ class _AppBottomNavigationBarState
         );
 
       case 1:
-        return const Center(
-          child: Text('Matchmaking Page'),
+        return MatchmakingPage(
+          apiBaseUrl: widget.apiBaseUrl,
+          accessToken: _accessToken,
         );
 
       case 2:

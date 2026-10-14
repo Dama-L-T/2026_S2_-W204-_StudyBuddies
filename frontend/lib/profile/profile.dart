@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'student_profile.dart';
+
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
@@ -9,12 +11,14 @@ class ProfilePage extends StatefulWidget {
   final String apiBaseUrl;
   final String accessToken;
   final VoidCallback onProfileSaved;
+  final StudentProfile? viewedProfile;
 
   const ProfilePage({
     super.key,
     required this.apiBaseUrl,
     required this.accessToken,
     required this.onProfileSaved,
+    this.viewedProfile,
   });
 
   @override
@@ -31,6 +35,7 @@ class _ProfilePageState extends State<ProfilePage> {
   final ImagePicker imagePicker = ImagePicker();
 
   XFile? profileImage;
+  String? _savedImageUrl;
 
   bool isLoading = true;
   bool isSaving = false;
@@ -38,16 +43,28 @@ class _ProfilePageState extends State<ProfilePage> {
   @override
   void initState() {
     super.initState();
-    loadProfile();
+    if (widget.viewedProfile case final profile?) {
+      _populateProfile(profile);
+      isLoading = false;
+    } else {
+      loadProfile();
+    }
+  }
+
+  void _populateProfile(StudentProfile profile) {
+    nameController.text = profile.name;
+    personalDetailsController.text = profile.personalDetails;
+    coursesController.text = profile.courses;
+    interestsController.text = profile.interests;
+    preferencesController.text = profile.preferences;
+    _savedImageUrl = profile.imageUrl;
   }
 
   Future<void> loadProfile() async {
     try {
       final response = await http.get(
         Uri.parse('${widget.apiBaseUrl}/profile/'),
-        headers: {
-          'Authorization': 'Bearer ${widget.accessToken}',
-        },
+        headers: {'Authorization': 'Bearer ${widget.accessToken}'},
       );
 
       if (!mounted) return;
@@ -56,13 +73,9 @@ class _ProfilePageState extends State<ProfilePage> {
         final data = jsonDecode(response.body);
 
         setState(() {
-          nameController.text = data['name'] ?? '';
-          personalDetailsController.text =
-              data['personal_details'] ?? '';
-          coursesController.text = data['courses'] ?? '';
-          interestsController.text = data['interests'] ?? '';
-          preferencesController.text =
-              data['preferences'] ?? '';
+          _populateProfile(
+            StudentProfile.fromJson(Map<String, dynamic>.from(data as Map)),
+          );
           isLoading = false;
         });
       } else if (response.statusCode == 404) {
@@ -75,9 +88,7 @@ class _ProfilePageState extends State<ProfilePage> {
         });
 
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Could not load your profile.'),
-          ),
+          const SnackBar(content: Text('Could not load your profile.')),
         );
       }
     } catch (error) {
@@ -88,9 +99,7 @@ class _ProfilePageState extends State<ProfilePage> {
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Could not connect to the server.'),
-        ),
+        const SnackBar(content: Text('Could not connect to the server.')),
       );
     }
   }
@@ -113,11 +122,9 @@ class _ProfilePageState extends State<ProfilePage> {
 
   Future<void> saveProfile() async {
     if (nameController.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please enter your name.'),
-        ),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Please enter your name.')));
 
       return;
     }
@@ -133,15 +140,15 @@ class _ProfilePageState extends State<ProfilePage> {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer ${widget.accessToken}',
         },
-        body: jsonEncode({
-          'name': nameController.text.trim(),
-          'personal_details':
-              personalDetailsController.text.trim(),
-          'courses': coursesController.text.trim(),
-          'interests': interestsController.text.trim(),
-          'preferences':
-              preferencesController.text.trim(),
-        }),
+        body: jsonEncode(
+          StudentProfile(
+            name: nameController.text.trim(),
+            personalDetails: personalDetailsController.text.trim(),
+            courses: coursesController.text.trim(),
+            interests: interestsController.text.trim(),
+            preferences: preferencesController.text.trim(),
+          ).toJson(),
+        ),
       );
 
       if (!mounted) return;
@@ -150,12 +157,9 @@ class _ProfilePageState extends State<ProfilePage> {
         isSaving = false;
       });
 
-      if (response.statusCode == 200 ||
-          response.statusCode == 201) {
+      if (response.statusCode == 200 || response.statusCode == 201) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Profile saved successfully!'),
-          ),
+          const SnackBar(content: Text('Profile saved successfully!')),
         );
 
         widget.onProfileSaved();
@@ -177,9 +181,7 @@ class _ProfilePageState extends State<ProfilePage> {
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Could not connect to the server.'),
-        ),
+        const SnackBar(content: Text('Could not connect to the server.')),
       );
     }
   }
@@ -199,20 +201,24 @@ class _ProfilePageState extends State<ProfilePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('My Profile'),
+        title: Text(
+          widget.viewedProfile == null ? 'My Profile' : 'Student Profile',
+        ),
       ),
       body: isLoading
-          ? const Center(
-              child: CircularProgressIndicator(),
-            )
+          ? const Center(child: CircularProgressIndicator())
           : SingleChildScrollView(
               padding: const EdgeInsets.all(20),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    'My Profile',
-                    style: TextStyle(
+                  Text(
+                    widget.viewedProfile == null
+                        ? 'My Profile'
+                        : (nameController.text.isEmpty
+                              ? 'Student'
+                              : nameController.text),
+                    style: const TextStyle(
                       fontSize: 28,
                       fontWeight: FontWeight.bold,
                     ),
@@ -222,7 +228,9 @@ class _ProfilePageState extends State<ProfilePage> {
 
                   Center(
                     child: GestureDetector(
-                      onTap: selectProfilePicture,
+                      onTap: widget.viewedProfile == null
+                          ? selectProfilePicture
+                          : null,
                       child: Stack(
                         alignment: Alignment.bottomRight,
                         children: [
@@ -230,11 +238,16 @@ class _ProfilePageState extends State<ProfilePage> {
                             radius: 60,
                             backgroundColor: Colors.grey,
                             backgroundImage: profileImage != null
-                                ? FileImage(
-                                    File(profileImage!.path),
-                                  )
+                                ? FileImage(File(profileImage!.path))
+                                : (_savedImageUrl != null
+                                      ? NetworkImage(_savedImageUrl!)
+                                      : null),
+                            onBackgroundImageError:
+                                _savedImageUrl != null && profileImage == null
+                                ? (_, _) {}
                                 : null,
-                            child: profileImage == null
+                            child:
+                                profileImage == null && _savedImageUrl == null
                                 ? const Icon(
                                     Icons.person,
                                     size: 60,
@@ -242,18 +255,19 @@ class _ProfilePageState extends State<ProfilePage> {
                                   )
                                 : null,
                           ),
-                          Container(
-                            decoration: const BoxDecoration(
-                              color: Colors.teal,
-                              shape: BoxShape.circle,
+                          if (widget.viewedProfile == null)
+                            Container(
+                              decoration: const BoxDecoration(
+                                color: Colors.teal,
+                                shape: BoxShape.circle,
+                              ),
+                              padding: const EdgeInsets.all(8),
+                              child: const Icon(
+                                Icons.camera_alt,
+                                color: Colors.white,
+                                size: 22,
+                              ),
                             ),
-                            padding: const EdgeInsets.all(8),
-                            child: const Icon(
-                              Icons.camera_alt,
-                              color: Colors.white,
-                              size: 22,
-                            ),
-                          ),
                         ],
                       ),
                     ),
@@ -261,126 +275,137 @@ class _ProfilePageState extends State<ProfilePage> {
 
                   const SizedBox(height: 10),
 
-                  const Center(
-                    child: Text(
-                      'Tap your picture to change it',
-                      style: TextStyle(
-                        color: Colors.grey,
+                  if (widget.viewedProfile == null)
+                    const Center(
+                      child: Text(
+                        'Tap your picture to change it',
+                        style: TextStyle(color: Colors.grey),
                       ),
                     ),
-                  ),
 
                   const SizedBox(height: 30),
 
-                  const Text(
-                    'Name',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 18,
+                  if (widget.viewedProfile == null ||
+                      nameController.text.isNotEmpty) ...[
+                    const Text(
+                      'Name',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 18,
+                      ),
                     ),
-                  ),
 
-                  TextField(
-                    controller: nameController,
-                    decoration: const InputDecoration(
-                      hintText: 'Enter your name',
+                    TextField(
+                      readOnly: widget.viewedProfile != null,
+                      controller: nameController,
+                      decoration: const InputDecoration(
+                        hintText: 'Enter your name',
+                      ),
                     ),
-                  ),
-
+                  ],
                   const SizedBox(height: 20),
 
-                  const Text(
-                    'Personal Details',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 18,
+                  if (widget.viewedProfile == null ||
+                      personalDetailsController.text.isNotEmpty) ...[
+                    const Text(
+                      'Personal Details',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 18,
+                      ),
                     ),
-                  ),
 
-                  TextField(
-                    controller: personalDetailsController,
-                    maxLines: 3,
-                    decoration: const InputDecoration(
-                      hintText:
-                          'Tell us a little about yourself',
+                    TextField(
+                      readOnly: widget.viewedProfile != null,
+                      controller: personalDetailsController,
+                      maxLines: 3,
+                      decoration: const InputDecoration(
+                        hintText: 'Tell us a little about yourself',
+                      ),
                     ),
-                  ),
-
+                  ],
                   const SizedBox(height: 20),
 
-                  const Text(
-                    'Courses',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 18,
+                  if (widget.viewedProfile == null ||
+                      coursesController.text.isNotEmpty) ...[
+                    const Text(
+                      'Courses',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 18,
+                      ),
                     ),
-                  ),
 
-                  TextField(
-                    controller: coursesController,
-                    decoration: const InputDecoration(
-                      hintText: 'e.g. COMP602, COMP604',
+                    TextField(
+                      readOnly: widget.viewedProfile != null,
+                      controller: coursesController,
+                      decoration: const InputDecoration(
+                        hintText: 'e.g. COMP602, COMP604',
+                      ),
                     ),
-                  ),
-
+                  ],
                   const SizedBox(height: 20),
 
-                  const Text(
-                    'Interests',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 18,
+                  if (widget.viewedProfile == null ||
+                      interestsController.text.isNotEmpty) ...[
+                    const Text(
+                      'Interests',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 18,
+                      ),
                     ),
-                  ),
 
-                  TextField(
-                    controller: interestsController,
-                    decoration: const InputDecoration(
-                      hintText:
-                          'e.g. Programming, AI, Cybersecurity',
+                    TextField(
+                      readOnly: widget.viewedProfile != null,
+                      controller: interestsController,
+                      decoration: const InputDecoration(
+                        hintText: 'e.g. Programming, AI, Cybersecurity',
+                      ),
                     ),
-                  ),
-
+                  ],
                   const SizedBox(height: 20),
 
-                  const Text(
-                    'Preferences',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 18,
+                  if (widget.viewedProfile == null ||
+                      preferencesController.text.isNotEmpty) ...[
+                    const Text(
+                      'Preferences',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 18,
+                      ),
                     ),
-                  ),
 
-                  TextField(
-                    controller: preferencesController,
-                    maxLines: 3,
-                    decoration: const InputDecoration(
-                      hintText:
-                          'e.g. Study preferences, group work, etc.',
+                    TextField(
+                      readOnly: widget.viewedProfile != null,
+                      controller: preferencesController,
+                      maxLines: 3,
+                      decoration: const InputDecoration(
+                        hintText: 'e.g. Study preferences, group work, etc.',
+                      ),
                     ),
-                  ),
-
+                  ],
                   const SizedBox(height: 30),
 
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: isSaving ? null : saveProfile,
-                      child: isSaving
-                          ? const SizedBox(
-                              height: 20,
-                              width: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                              ),
-                            )
-                          : const Text('Save Profile'),
+                  if (widget.viewedProfile == null)
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: isSaving ? null : saveProfile,
+                        child: isSaving
+                            ? const SizedBox(
+                                height: 20,
+                                width: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Text('Save Profile'),
+                      ),
                     ),
-                  ),
                 ],
               ),
             ),
     );
   }
 }
-
