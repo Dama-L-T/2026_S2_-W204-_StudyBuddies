@@ -63,3 +63,38 @@ def save_choice(db, user_id, target_id, status):
     db.table('matchmaking_interests').upsert({
         'student_id': user_id, 'target_student_id': target_id, 'status': status,
     }, on_conflict='student_id,target_student_id').execute()
+
+
+def restore_dismissed(db, user_id):
+    """Restore only this student's uninterested choices; retain interests."""
+    db.table('matchmaking_interests').delete().eq(
+        'student_id', user_id
+    ).eq('status', 'uninterested').execute()
+
+
+def saved_profiles(db, user_id, status):
+    choices = rows(db.table('matchmaking_interests').select('target_student_id').eq(
+        'student_id', user_id
+    ).eq('status', status).order('target_student_id'))
+    ids = [choice['target_student_id'] for choice in choices]
+    profiles = []
+    for start in range(0, len(ids), 100):
+        batch = rows(db.table('profiles').select('user_id,' + ','.join(FIELDS)).in_(
+            'user_id', ids[start:start + 100]
+        ).order('user_id'))
+        profiles.extend(profile_fields(profile) for profile in batch)
+    return sorted(profiles, key=lambda p: (p['name'].casefold(), p['user_id']))
+
+
+def restore_profile(db, user_id, target_id):
+    """A stale Uninterested screen must never delete a newer Interested choice."""
+    db.table('matchmaking_interests').delete().eq('student_id', user_id).eq(
+        'target_student_id', target_id
+    ).eq('status', 'uninterested').execute()
+
+
+def remove_interest(db, user_id, target_id):
+    """Remove only an Interested choice belonging to the authenticated student."""
+    db.table('matchmaking_interests').delete().eq('student_id', user_id).eq(
+        'target_student_id', target_id
+    ).eq('status', 'interested').execute()

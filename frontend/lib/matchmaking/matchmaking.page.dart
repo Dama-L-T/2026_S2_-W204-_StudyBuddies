@@ -5,6 +5,7 @@ import '../profile/student_profile.dart';
 import 'matchmaking_api.dart';
 
 part 'matchmaking_widgets.dart';
+part 'matchmaking_lists.dart';
 
 class MatchmakingPage extends StatefulWidget {
   const MatchmakingPage({
@@ -156,6 +157,23 @@ class _MatchmakingPageState extends State<MatchmakingPage> {
     }
   }
 
+  Future<void> _savedProfiles(String status) async {
+    await Navigator.push<void>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => _SavedProfilesPage(
+          api: _api,
+          status: status,
+          apiBaseUrl: widget.apiBaseUrl,
+          accessToken: widget.accessToken,
+          onRestored: (id) {
+            if (mounted) setState(() => _sessionSkipped.remove(id));
+          },
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: const AppBarWidget(title: 'Matchmaking'),
@@ -183,6 +201,30 @@ class _MatchmakingPageState extends State<MatchmakingPage> {
         ),
         const SizedBox(height: 12),
         if (!_swiping) ...[
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  key: const Key('interested-list'),
+                  onPressed: _busy ? null : () => _savedProfiles('interested'),
+                  icon: const Icon(Icons.favorite_border),
+                  label: const Text('Interested'),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: OutlinedButton.icon(
+                  key: const Key('uninterested-list'),
+                  onPressed: _busy
+                      ? null
+                      : () => _savedProfiles('uninterested'),
+                  icon: const Icon(Icons.person_off_outlined),
+                  label: const Text('Uninterested'),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
           const Text('Find students with shared courses, interests, or both.'),
           const SizedBox(height: 16),
           if (_profile case final profile?) ...[

@@ -15,15 +15,25 @@ class Query:
     def __init__(self, records):
         self.records, self.filters = records, []
         self.start, self.end = 0, 999
+        self.deleting = False
     def select(self, _): return self
     def eq(self, key, value):
         self.filters.append(lambda row: row.get(key) == value)
+        return self
+    def delete(self):
+        self.deleting = True
+        return self
+    def in_(self, key, values):
+        self.filters.append(lambda row: row.get(key) in values)
         return self
     def order(self, _): return self
     def range(self, start, end):
         self.start, self.end = start, end
         return self
     def execute(self):
+        if self.deleting:
+            self.records[:] = [r for r in self.records if not all(f(r) for f in self.filters)]
+            return SimpleNamespace(data=[])
         return SimpleNamespace(data=[r for r in self.records if all(f(r) for f in self.filters)][self.start:self.end + 1])
 
 
@@ -74,6 +84,63 @@ class MatchingTests(unittest.TestCase):
             'student_id': USER, 'target_student_id': TARGET, 'status': 'uninterested',
         }, on_conflict='student_id,target_student_id')
 
+    def test_restore_removes_only_own_dismissals_and_makes_profiles_eligible(self):
+        db = Database()
+        db.data['matchmaking_interests'] = [
+            {'student_id': 'me', 'target_student_id': 'a', 'status': 'uninterested'},
+            {'student_id': 'me', 'target_student_id': 'b', 'status': 'interested'},
+            {'student_id': 'other', 'target_student_id': 'a', 'status': 'uninterested'},
+        ]
+        self.assertEqual(service.recommendations(db, 'me', 'both'), [])
+        service.restore_dismissed(db, 'me')
+        self.assertEqual([r['profile']['user_id'] for r in service.recommendations(db, 'me', 'both')], ['a'])
+        self.assertEqual(len(db.data['matchmaking_interests']), 2)
+        self.assertEqual(db.data['matchmaking_interests'][0]['status'], 'interested')
+        self.assertEqual(db.data['matchmaking_interests'][1]['student_id'], 'other')
+        service.restore_dismissed(db, 'me')
+        self.assertEqual(len(db.data['matchmaking_interests']), 2)
+
+    def test_saved_lists_filter_by_owner_and_status(self):
+        db = Database()
+        db.data['matchmaking_interests'] = [
+            {'student_id': 'me', 'target_student_id': 'a', 'status': 'uninterested'},
+            {'student_id': 'me', 'target_student_id': 'b', 'status': 'interested'},
+            {'student_id': 'other', 'target_student_id': 'c', 'status': 'interested'},
+            {'student_id': 'me', 'target_student_id': 'deleted', 'status': 'interested'},
+        ]
+        self.assertEqual([p['user_id'] for p in service.saved_profiles(db, 'me', 'interested')], ['b'])
+        self.assertEqual([p['user_id'] for p in service.saved_profiles(db, 'me', 'uninterested')], ['a'])
+        self.assertEqual(service.saved_profiles(db, 'new', 'interested'), [])
+
+    def test_individual_restore_keeps_other_dismissals_interests_and_accounts(self):
+        db = Database()
+        db.data['matchmaking_interests'] = [
+            {'student_id': 'me', 'target_student_id': 'a', 'status': 'uninterested'},
+            {'student_id': 'me', 'target_student_id': 'b', 'status': 'uninterested'},
+            {'student_id': 'other', 'target_student_id': 'a', 'status': 'uninterested'},
+            {'student_id': 'me', 'target_student_id': 'c', 'status': 'interested'},
+        ]
+        service.restore_profile(db, 'me', 'a')
+        self.assertEqual(len(db.data['matchmaking_interests']), 3)
+        self.assertEqual([r['profile']['user_id'] for r in service.recommendations(db, 'me', 'both')], ['a'])
+        service.restore_profile(db, 'me', 'c')
+        service.restore_profile(db, 'me', 'missing')
+        self.assertEqual(len(db.data['matchmaking_interests']), 3)
+
+    def test_remove_interest_affects_only_own_target_with_interested_status(self):
+        db = Database()
+        db.data['matchmaking_interests'] = [
+            {'student_id': 'me', 'target_student_id': 'a', 'status': 'interested'},
+            {'student_id': 'me', 'target_student_id': 'b', 'status': 'uninterested'},
+            {'student_id': 'other', 'target_student_id': 'a', 'status': 'interested'},
+        ]
+        service.remove_interest(db, 'me', 'a')
+        self.assertEqual(len(db.data['matchmaking_interests']), 2)
+        self.assertEqual([r['profile']['user_id'] for r in service.recommendations(db, 'me', 'both')], ['a'])
+        service.remove_interest(db, 'me', 'b')
+        service.remove_interest(db, 'me', 'missing')
+        self.assertEqual(len(db.data['matchmaking_interests']), 2)
+
 
 class RouteTests(unittest.TestCase):
     def setUp(self):
@@ -84,7 +151,7 @@ class RouteTests(unittest.TestCase):
         self.client = TestClient(self.app)
 
     def test_requires_authentication(self):
-        for method, path, body in [('GET', '/matchmaking', None), ('GET', f'/matchmaking/profiles/{TARGET}', None), ('PUT', f'/matchmaking/choices/{TARGET}', {'status': 'interested'})]:
+        for method, path, body in [('DELETE', f'/matchmaking/interests/{TARGET}', None), ('GET', '/matchmaking/choices?status=interested', None), ('DELETE', f'/matchmaking/dismissals/{TARGET}', None), ('DELETE', '/matchmaking/dismissals', None), ('GET', '/matchmaking', None), ('GET', f'/matchmaking/profiles/{TARGET}', None), ('PUT', f'/matchmaking/choices/{TARGET}', {'status': 'interested'})]:
             self.assertEqual(self.client.request(method, path, json=body).status_code, 401)
         self.db.table.assert_not_called()
 
@@ -105,3 +172,38 @@ class RouteTests(unittest.TestCase):
                 response = self.client.get('/matchmaking')
             self.assertEqual(response.status_code, 503)
             self.assertNotIn('private db detail', response.text)
+
+    def test_restore_route_uses_verified_identity_and_reports_failures(self):
+        self.app.dependency_overrides[get_current_user_id] = lambda: USER
+        with patch.object(service, 'restore_dismissed') as restore:
+            self.assertEqual(self.client.delete('/matchmaking/dismissals').status_code, 204)
+            restore.assert_called_once_with(self.db, USER)
+        with patch.object(service, 'restore_dismissed', side_effect=RuntimeError('private failure')):
+            with self.assertLogs(matchmaking.logger, level='ERROR'):
+                response = self.client.delete('/matchmaking/dismissals')
+            self.assertEqual(response.status_code, 503)
+            self.assertNotIn('private failure', response.text)
+
+    def test_saved_list_and_single_restore_use_authenticated_identity(self):
+        self.app.dependency_overrides[get_current_user_id] = lambda: USER
+        with patch.object(service, 'saved_profiles', return_value=[]) as saved:
+            self.assertEqual(self.client.get('/matchmaking/choices?status=interested').json(), [])
+            saved.assert_called_once_with(self.db, USER, 'interested')
+        self.assertEqual(self.client.get('/matchmaking/choices?status=invalid').status_code, 422)
+        with patch.object(service, 'restore_profile') as restore:
+            self.assertEqual(self.client.delete(f'/matchmaking/dismissals/{TARGET}').status_code, 204)
+            restore.assert_called_once_with(self.db, USER, TARGET)
+        with patch.object(service, 'restore_profile', side_effect=RuntimeError('private')):
+            with self.assertLogs(matchmaking.logger, level='ERROR'):
+                self.assertEqual(self.client.delete(f'/matchmaking/dismissals/{TARGET}').status_code, 503)
+
+    def test_remove_interest_route_uses_verified_identity_and_handles_failure(self):
+        self.app.dependency_overrides[get_current_user_id] = lambda: USER
+        with patch.object(service, 'remove_interest') as remove:
+            self.assertEqual(self.client.delete(f'/matchmaking/interests/{TARGET}').status_code, 204)
+            remove.assert_called_once_with(self.db, USER, TARGET)
+        with patch.object(service, 'remove_interest', side_effect=RuntimeError('private')):
+            with self.assertLogs(matchmaking.logger, level='ERROR'):
+                response = self.client.delete(f'/matchmaking/interests/{TARGET}')
+            self.assertEqual(response.status_code, 503)
+            self.assertNotIn('private', response.text)

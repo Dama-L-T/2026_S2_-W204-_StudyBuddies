@@ -45,3 +45,32 @@ def save_choice(target_id: UUID, payload: Choice, user_id: str = Depends(get_cur
         service.save_choice(db, user_id, str(target_id), payload.status)
         return Response(status_code=204)
     return run(save)
+
+
+@router.delete('/dismissals', status_code=204)
+def restore_dismissed(user_id: str = Depends(get_current_user_id), db=Depends(database)):
+    def restore():
+        service.restore_dismissed(db, user_id)
+        return Response(status_code=204)
+    return run(restore)
+
+
+@router.get('/choices')
+def saved_profiles(status: Literal['interested', 'uninterested'], user_id: str = Depends(get_current_user_id), db=Depends(database)):
+    return run(lambda: service.saved_profiles(db, user_id, status))
+
+
+@router.delete('/dismissals/{target_id}', status_code=204)
+def restore_profile(target_id: UUID, user_id: str = Depends(get_current_user_id), db=Depends(database)):
+    def restore():
+        service.restore_profile(db, user_id, str(target_id))
+        return Response(status_code=204)
+    return run(restore)
+
+
+@router.delete('/interests/{target_id}', status_code=204)
+def remove_interest(target_id: UUID, user_id: str = Depends(get_current_user_id), db=Depends(database)):
+    def remove():
+        service.remove_interest(db, user_id, str(target_id))
+        return Response(status_code=204)
+    return run(remove)

@@ -17,7 +17,20 @@ GET /matchmaking/profiles/{student_id}
 PUT /matchmaking/choices/{student_id} with {"status":"interested|uninterested"}
 
 The acting student is derived from the verified access token on the backend.
-The separate saved-list review screens and request workflow belong to later
-stories. No request is sent by swiping. Profile images currently require an
+The request workflow belongs to a later story. No request is sent by swiping. Profile images currently require an
 HTTP(S) URL in the existing profile_image field. General profile visibility
 controls remain for the profile team's story.
+
+The main Match screen has Interested and Uninterested buttons. Each opens a
+server-backed list with photo, name, and profile viewing. Both lists have an X
+button per student. A confirmation dialog offers Cancel/Remove and explains
+that removal lets the student appear in recommendations again. No request is
+sent until removal is confirmed. Interested also has a disabled Send invite
+placeholder. The Uninterested list has no invitation action.
+
+GET /matchmaking/choices?status=interested|uninterested loads the current account's
+saved profiles. DELETE /matchmaking/interests/{student_id} removes an Interested
+choice; DELETE /matchmaking/dismissals/{student_id} removes an Uninterested choice.
+Both endpoints are scoped to the authenticated owner, target, and current status.
+Failures keep the entry visible for retry. Matching criteria still apply after
+removal.

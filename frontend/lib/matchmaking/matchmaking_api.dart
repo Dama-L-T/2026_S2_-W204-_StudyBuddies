@@ -70,5 +70,20 @@ class MatchmakingApi {
     '/matchmaking/choices/${Uri.encodeComponent(id)}',
     {'status': status},
   );
+  Future<void> restoreDismissed() async =>
+      request('DELETE', '/matchmaking/dismissals');
+
+  Future<List<StudentProfile>> savedProfiles(String status) async => [
+    for (final item
+        in await request('GET', '/matchmaking/choices?status=$status') as List)
+      StudentProfile.fromJson(Map<String, dynamic>.from(item as Map)),
+  ];
+
+  Future<void> restoreProfile(String id) async =>
+      request('DELETE', '/matchmaking/dismissals/${Uri.encodeComponent(id)}');
+
+  Future<void> removeInterest(String id) async =>
+      request('DELETE', '/matchmaking/interests/${Uri.encodeComponent(id)}');
+
   void close() => _client.close();
 }
