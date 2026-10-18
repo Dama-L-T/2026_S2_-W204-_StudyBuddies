@@ -13,6 +13,9 @@ from app.services.chat_service import (
     hide_conversation,
     unhide_conversation,
     get_block_status,
+    list_blocked_users,
+    list_hidden_conversations,
+    unblock_user_by_id,
 )
 from app.services.auth_dependency import get_current_user_id
 
@@ -151,3 +154,23 @@ def read_block_status(
         conversation_id=conversation_id,
         user_id=str(user_id),
     )
+
+
+@router.get("/blocked-users")
+def get_blocked_users(user_id: str = Depends(get_current_user_id)):
+    items = list_blocked_users(str(user_id))
+    return {"blocked_users": items}
+
+
+@router.get("/hidden-conversations")
+def get_hidden_conversations(user_id: str = Depends(get_current_user_id)):
+    items = list_hidden_conversations(str(user_id))
+    return {"hidden_conversations": items}
+
+
+@router.delete("/blocked-users/{blocked_user_id}")
+def unblock_user_from_settings(
+    blocked_user_id: str,
+    user_id: str = Depends(get_current_user_id),
+):
+    return unblock_user_by_id(str(user_id), blocked_user_id)

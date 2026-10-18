@@ -483,3 +483,88 @@ def delete_message(conversation_id: str, message_id: str, user_id: str) -> dict:
         raise HTTPException(status_code=500, detail="Failed to delete message")
 
     return {"message": "Message deleted"}
+
+def list_blocked_users(user_id: str) -> list[dict]:
+    client = _client()
+    result = (
+        client.table("chat_user_actions")
+        .select("blocked_user_id")
+        .eq("user_id", user_id)
+        .eq("is_blocked", True)
+        .execute()
+    )
+
+    blocked_users = []
+    for action in result.data or []:
+        blocked_user_id = action.get("blocked_user_id")
+        if not blocked_user_id:
+            continue
+        blocked_users.append({
+            "blocked_user_id": str(blocked_user_id),
+            "blocked_user_name": _profile_name(client, str(blocked_user_id)),
+        })
+
+    return blocked_users
+
+
+def list_hidden_conversations(user_id: str) -> list[dict]:
+    client = _client()
+    result = (
+        client.table("chat_user_actions")
+        .select("conversation_id")
+        .eq("user_id", user_id)
+        .eq("is_hidden", True)
+        .execute()
+    )
+
+    hidden_conversations = []
+    for action in result.data or []:
+        conversation_id = action.get("conversation_id")
+        if not conversation_id:
+            continue
+
+        try:
+            conversation = _get_conversation(
+                client, str(conversation_id), user_id
+            )
+        except HTTPException:
+            continue
+
+        other_id = _other_user_id(conversation, user_id)
+        hidden_conversations.append({
+            "conversation_id": str(conversation_id),
+            "other_user_name": _profile_name(client, other_id),
+        })
+
+    return hidden_conversations
+
+
+def unblock_user_by_id(user_id: str, blocked_user_id: str) -> dict:
+    client = _client()
+    action = _find_block_action(client, user_id, blocked_user_id)
+
+    if not action:
+        return {"message": "User is not blocked"}
+
+    if action.get("is_hidden"):
+        result = (
+            client.table("chat_user_actions")
+            .update({
+                "is_blocked": False,
+                "blocked_user_id": None,
+            })
+            .eq("id", action["id"])
+            .execute()
+        )
+    else:
+        result = (
+            client.table("chat_user_actions")
+            .delete()
+            .eq("id", action["id"])
+            .execute()
+        )
+
+    if not result.data:
+        raise HTTPException(status_code=500, detail="Failed to unblock user")
+
+    return {"message": "User unblocked successfully"}
