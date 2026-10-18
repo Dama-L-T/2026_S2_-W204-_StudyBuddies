@@ -30,6 +30,10 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
   bool _isSending = false;
   bool _hasError = false;
   bool _isFetchingMessages = false;
+  bool _isBlockedByMe = false;
+  bool _hasBlockedMe = false;
+  bool _isLoadingBlockStatus = true;
+  bool _isFetchingBlockStatus = false;
 
   // Invalidates older requests after a message is edited or deleted.
   int _messageRequestId = 0;
@@ -47,13 +51,116 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
   @override
   void initState() {
     super.initState();
-
     _loadMessages();
+    _loadBlockStatus();
 
     _pollTimer = Timer.periodic(
       const Duration(seconds: 2),
-      (_) => _loadMessages(silent: true),
+      (_) {
+        _loadMessages(silent: true);
+        _loadBlockStatus();
+      },
     );
+  }
+
+  Future<void> _loadBlockStatus() async {
+    if (_conversationId.isEmpty || _isFetchingBlockStatus) return;
+
+    _isFetchingBlockStatus = true;
+    try {
+      final status = await widget.api.getBlockStatus(_conversationId);
+      if (!mounted) return;
+
+      setState(() {
+        _isBlockedByMe = status['is_blocked_by_me'] == true;
+        _hasBlockedMe = status['has_blocked_me'] == true;
+        _isLoadingBlockStatus = false;
+      });
+    } catch (e) {
+      debugPrint('Failed to load block status: $e');
+      if (mounted) {
+        setState(() => _isLoadingBlockStatus = false);
+      }
+    } finally {
+      _isFetchingBlockStatus = false;
+    }
+  }
+
+  Future<void> _confirmBlockUser() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Block this student?'),
+        content: Text(
+          'You will no longer be able to exchange messages with $_studentName.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Block'),
+          ),
+        ],
+      ),
+    );
+
+    if (!mounted || confirmed != true) return;
+
+    try {
+      await widget.api.blockUser(_conversationId);
+      await _loadBlockStatus();
+      if (!mounted) return;
+      _showSnackBar('Student blocked.');
+    } catch (e) {
+      if (mounted) _showSnackBar('Unable to block student: $e');
+    }
+  }
+
+  Future<void> _unblockUser() async {
+    try {
+      await widget.api.unblockUser(_conversationId);
+      await _loadBlockStatus();
+      if (!mounted) return;
+      _showSnackBar('Student unblocked.');
+    } catch (e) {
+      if (mounted) _showSnackBar('Unable to unblock student: $e');
+    }
+  }
+
+  Future<void> _confirmHideConversation() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Hide conversation?'),
+        content: const Text(
+          'This conversation will disappear from your chat list. '
+          'The other student can still see it.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Hide'),
+          ),
+        ],
+      ),
+    );
+
+    if (!mounted || confirmed != true) return;
+
+    try {
+      await widget.api.hideConversation(_conversationId);
+      if (!mounted) return;
+      Navigator.pop(context);
+    } catch (e) {
+      if (mounted) _showSnackBar('Unable to hide conversation: $e');
+    }
   }
 
   @override
@@ -173,7 +280,7 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
   Future<void> _sendMessage() async {
     final content = _messageController.text.trim();
 
-    if (content.isEmpty || _isSending) return;
+    if (content.isEmpty || _isSending || _isBlockedByMe || _hasBlockedMe) return;
 
     setState(() => _isSending = true);
 
@@ -491,11 +598,49 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
             ),
           ],
         ),
+        actions: [
+          PopupMenuButton<String>(
+            onSelected: (value) {
+              switch (value) {
+                case 'block':
+                  _confirmBlockUser();
+                  break;
+                case 'unblock':
+                  _unblockUser();
+                  break;
+                case 'hide':
+                  _confirmHideConversation();
+                  break;
+              }
+            },
+            itemBuilder: (context) => [
+              if (_isBlockedByMe)
+                const PopupMenuItem(
+                  value: 'unblock',
+                  child: Text('Unblock student'),
+                )
+              else if (!_hasBlockedMe)
+                const PopupMenuItem(
+                  value: 'block',
+                  child: Text('Block student'),
+                ),
+              const PopupMenuItem(
+                value: 'hide',
+                child: Text('Hide conversation'),
+              ),
+            ],
+          ),
+        ],
       ),
       body: Column(
         children: [
           Expanded(child: _buildMessageList()),
-          _buildMessageInput(),
+          if (_isLoadingBlockStatus)
+            const LinearProgressIndicator(minHeight: 2)
+          else if (_isBlockedByMe || _hasBlockedMe)
+            _buildBlockedNotice()
+          else
+            _buildMessageInput(),
         ],
       ),
     );
@@ -712,6 +857,52 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
                 ),
               ),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBlockedNotice() {
+    final blockedByMe = _isBlockedByMe;
+
+    return SafeArea(
+      top: false,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(16),
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          border: Border(
+            top: BorderSide(color: Color(0xFFEAEAEA)),
+          ),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.block,
+              color: Colors.grey.shade700,
+              size: 26,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              blockedByMe
+                  ? 'You blocked this user'
+                  : 'You cannot message this user because they blocked you',
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: 14,
+              ),
+            ),
+            if (blockedByMe) ...[
+              const SizedBox(height: 8),
+              OutlinedButton(
+                onPressed: _unblockUser,
+                child: const Text('Unblock'),
+              ),
+            ],
           ],
         ),
       ),

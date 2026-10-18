@@ -102,6 +102,42 @@ class ChatApiClient {
       '/chat/conversations/$conversationId/read',
     );
   }
+  
+  Future<Map<String, dynamic>> getBlockStatus(
+    String conversationId,
+  ) async {
+    final result = await _request(
+      'GET',
+      '/chat/conversations/$conversationId/block-status',
+    );
+
+    if (result is Map) {
+      return Map<String, dynamic>.from(result);
+    }
+
+    return {};
+  }
+
+  Future<void> blockUser(String conversationId) async {
+    await _request(
+      'POST',
+      '/chat/conversations/$conversationId/block',
+    );
+  }
+
+  Future<void> unblockUser(String conversationId) async {
+    await _request(
+      'DELETE',
+      '/chat/conversations/$conversationId/block',
+    );
+  }
+
+  Future<void> hideConversation(String conversationId) async {
+    await _request(
+      'POST',
+      '/chat/conversations/$conversationId/hide',
+    );
+  }
 
   Future<dynamic> _request(
     String method,
