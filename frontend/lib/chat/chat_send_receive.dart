@@ -96,6 +96,28 @@ class ChatApiClient {
     );
   }
 
+  Future<void> reportMessage(
+    String conversationId,
+    String messageId,
+    String reason,
+  ) async {
+    await _request(
+      'POST',
+      '/chat/conversations/$conversationId/messages/$messageId/report',
+      body: {'reason': reason},
+    );
+  }
+
+  Future<void> unreportMessage(
+    String conversationId,
+    String messageId,
+  ) async {
+    await _request(
+      'DELETE',
+      '/chat/conversations/$conversationId/messages/$messageId/report',
+    );
+  }
+
   Future<void> markConversationRead(String conversationId) async {
     await _request(
       'POST',

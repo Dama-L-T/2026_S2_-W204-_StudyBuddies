@@ -339,16 +339,31 @@ def list_messages(conversation_id: str, user_id: str) -> list[dict]:
         .execute()
     )
 
+    reports_result = (
+        client.table("chat_message_reports")
+        .select("message_id")
+        .eq("conversation_id", conversation_id)
+        .eq("reporter_id", user_id)
+        .execute()
+    )
+    reported_ids = {
+        str(report["message_id"])
+        for report in (reports_result.data or [])
+    }
+
     messages = []
     for message in result.data or []:
         sender_id = str(message["sender_id"])
+        message_id = str(message["id"])
         messages.append({
-            "id": str(message["id"]),
+            "id": message_id,
             "sender_name": _profile_name(client, sender_id),
             "content": message["content"],
             "created_at": message["created_at"],
             "is_mine": sender_id == user_id,
+            "is_reported_by_me": message_id in reported_ids,
         })
+
     return messages
 
 
@@ -568,3 +583,135 @@ def unblock_user_by_id(user_id: str, blocked_user_id: str) -> dict:
         raise HTTPException(status_code=500, detail="Failed to unblock user")
 
     return {"message": "User unblocked successfully"}
+
+
+def report_message(
+    conversation_id: str,
+    message_id: str,
+    user_id: str,
+    reason: str,
+) -> dict:
+    client = _client()
+    _get_conversation(client, conversation_id, user_id)
+
+    reason = reason.strip()
+    if not reason:
+        raise HTTPException(status_code=422, detail="Report reason is required")
+    if len(reason) > 1000:
+        raise HTTPException(
+            status_code=422,
+            detail="Report reason cannot exceed 1000 characters",
+        )
+
+    result = (
+        client.table("chat_messages")
+        .select("id, conversation_id, sender_id, content")
+        .eq("id", message_id)
+        .eq("conversation_id", conversation_id)
+        .limit(1)
+        .execute()
+    )
+    if not result.data:
+        raise HTTPException(status_code=404, detail="Message not found")
+
+    message = result.data[0]
+    reported_user_id = str(message["sender_id"])
+
+    if reported_user_id == user_id:
+        raise HTTPException(
+            status_code=400,
+            detail="You cannot report your own message",
+        )
+
+    existing = (
+        client.table("chat_message_reports")
+        .select("id")
+        .eq("reporter_id", user_id)
+        .eq("message_id", str(message["id"]))
+        .limit(1)
+        .execute()
+    )
+    if existing.data:
+        raise HTTPException(
+            status_code=409,
+            detail="You have already reported this message",
+        )
+
+    inserted = (
+        client.table("chat_message_reports")
+        .insert({
+            "message_id": str(message["id"]),
+            "conversation_id": conversation_id,
+            "reporter_id": user_id,
+            "reported_user_id": reported_user_id,
+            "message_content": message["content"],
+            "reason": reason,
+        })
+        .execute()
+    )
+    if not inserted.data:
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to submit report",
+        )
+
+    return {
+        "message": "Message reported successfully",
+        "is_reported_by_me": True,
+    }
+
+
+def unreport_message(
+    conversation_id: str,
+    message_id: str,
+    user_id: str,
+) -> dict:
+    client = _client()
+    _get_conversation(client, conversation_id, user_id)
+
+    message_result = (
+        client.table("chat_messages")
+        .select("id, sender_id")
+        .eq("id", message_id)
+        .eq("conversation_id", conversation_id)
+        .limit(1)
+        .execute()
+    )
+    if not message_result.data:
+        raise HTTPException(status_code=404, detail="Message not found")
+
+    if str(message_result.data[0]["sender_id"]) == user_id:
+        raise HTTPException(
+            status_code=400,
+            detail="You cannot unreport your own message",
+        )
+
+    existing = (
+        client.table("chat_message_reports")
+        .select("id")
+        .eq("conversation_id", conversation_id)
+        .eq("message_id", str(message_id))
+        .eq("reporter_id", user_id)
+        .limit(1)
+        .execute()
+    )
+
+    if not existing.data:
+        return {
+            "message": "You have not reported this message",
+            "is_reported_by_me": False,
+        }
+
+    (
+        client.table("chat_message_reports")
+        .delete()
+        .eq("conversation_id", conversation_id)
+        .eq("message_id", str(message_id))
+        .eq("reporter_id", user_id)
+        .execute()
+    )
+
+    return {
+        "message": "Report removed successfully",
+        "is_reported_by_me": False,
+    }

@@ -16,6 +16,8 @@ from app.services.chat_service import (
     list_blocked_users,
     list_hidden_conversations,
     unblock_user_by_id,
+    report_message,
+    unreport_message,
 )
 from app.services.auth_dependency import get_current_user_id
 
@@ -28,6 +30,10 @@ class SendMessageRequest(BaseModel):
 
 class EditMessageRequest(BaseModel):
     content: str = Field(min_length=1, max_length=5000)
+
+
+class ReportMessageRequest(BaseModel):
+    reason: str = Field(min_length=1, max_length=1000)
 
 
 @router.get("/conversations")
@@ -174,3 +180,40 @@ def unblock_user_from_settings(
     user_id: str = Depends(get_current_user_id),
 ):
     return unblock_user_by_id(str(user_id), blocked_user_id)
+
+
+@router.post(
+    "/conversations/{conversation_id}/messages/{message_id}/report",
+    status_code=201,
+)
+def create_message_report(
+    conversation_id: str,
+    message_id: str,
+    body: ReportMessageRequest,
+    user_id: str = Depends(get_current_user_id),
+):
+    reason = body.reason.strip()
+    if not reason:
+        raise HTTPException(status_code=422, detail="Report reason is required")
+
+    return report_message(
+        conversation_id=conversation_id,
+        message_id=message_id,
+        user_id=str(user_id),
+        reason=reason,
+    )
+
+
+@router.delete(
+    "/conversations/{conversation_id}/messages/{message_id}/report",
+)
+def remove_message_report(
+    conversation_id: str,
+    message_id: str,
+    user_id: str = Depends(get_current_user_id),
+):
+    return unreport_message(
+        conversation_id=conversation_id,
+        message_id=message_id,
+        user_id=str(user_id),
+    )

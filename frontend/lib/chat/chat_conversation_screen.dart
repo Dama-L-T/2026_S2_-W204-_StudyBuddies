@@ -182,22 +182,20 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
       return;
     }
 
-    // Do not start another request while one is already running.
     if (_isFetchingMessages) return;
 
     _isFetchingMessages = true;
     final requestId = ++_messageRequestId;
 
-    if (!silent && mounted) {
-      setState(() {
-        _isLoading = true;
-        _hasError = false;
-      });
-    }
-
     try {
-      final fetchedMessages =
-          await widget.api.getMessages(_conversationId);
+      if (!silent && mounted) {
+        setState(() {
+          _isLoading = true;
+          _hasError = false;
+        });
+      }
+
+      final fetchedMessages = await widget.api.getMessages(_conversationId);
 
       if (!mounted || requestId != _messageRequestId) return;
 
@@ -211,20 +209,16 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
           _hasError = false;
         });
 
-        // Scroll only when messages have been added.
         if (fetchedMessages.length > oldCount) {
           _scrollToBottom();
         }
 
-        // Mark incoming messages as read without letting a read failure
-        // turn a successful message fetch into a loading error.
         try {
           await widget.api.markConversationRead(_conversationId);
         } catch (e) {
           debugPrint('Failed to mark conversation as read: $e');
         }
       } else if (_isLoading || _hasError) {
-        // Avoid rebuilding the screen on every unchanged poll.
         setState(() {
           _isLoading = false;
           _hasError = false;
@@ -261,15 +255,16 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
       return true;
     }
 
-    for (var i = 0; i < oldMessages.length; i++) {
+    for (int i = 0; i < oldMessages.length; i++) {
       final oldMessage = oldMessages[i];
       final newMessage = newMessages[i];
 
-      if (oldMessage['id']?.toString() !=
-              newMessage['id']?.toString() ||
+      if (oldMessage['id']?.toString() != newMessage['id']?.toString() ||
           oldMessage['content'] != newMessage['content'] ||
           oldMessage['created_at'] != newMessage['created_at'] ||
-          oldMessage['read_at'] != newMessage['read_at']) {
+          oldMessage['read_at'] != newMessage['read_at'] ||
+          oldMessage['is_reported_by_me'] !=
+              newMessage['is_reported_by_me']) {
         return true;
       }
     }
@@ -459,7 +454,165 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
     }
   }
 
+  bool _isReported(Map<String, dynamic> message) {
+    return message['is_reported_by_me'] == true;
+  }
+
+  Future<void> _reportMessage(Map<String, dynamic> message) async {
+    final messageId = message['id']?.toString();
+    if (messageId == null || messageId.isEmpty) return;
+
+    const reasons = [
+      'Harassment or bullying',
+      'Hate or abusive content',
+      'Sexual or inappropriate content',
+      'Threats or violence',
+      'Spam or scam',
+      'Other',
+    ];
+
+    String selectedReason = reasons.first;
+    final detailsController = TextEditingController();
+
+    try {
+      final reason = await showDialog<String>(
+        context: context,
+        builder: (dialogContext) => StatefulBuilder(
+          builder: (context, setDialogState) => AlertDialog(
+            title: const Text('Report message'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Why are you reporting this message?'),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  value: selectedReason,
+                  isExpanded: true,
+                  items: reasons.map((reason) {
+                    return DropdownMenuItem(
+                      value: reason,
+                      child: Text(
+                        reason,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    );
+                  }).toList(),
+                  onChanged: (value) {
+                    if (value != null) {
+                      setDialogState(() => selectedReason = value);
+                    }
+                  },
+                  decoration: const InputDecoration(
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: detailsController,
+                  maxLength: 1000,
+                  maxLines: 3,
+                  decoration: const InputDecoration(
+                    labelText: 'Additional details (optional)',
+                    border: OutlineInputBorder(),
+                    hintText: 'Provide more information',
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                onPressed: () {
+                  final details = detailsController.text.trim();
+                  final reason = selectedReason == 'Other'
+                      ? details
+                      : details.isEmpty
+                          ? selectedReason
+                          : '$selectedReason: $details';
+
+                  if (reason.trim().isEmpty) return;
+                  Navigator.pop(dialogContext, reason);
+                },
+                child: const Text('Submit report'),
+              ),
+            ],
+          ),
+        ),
+      );
+
+      if (!mounted || reason == null) return;
+
+      await widget.api.reportMessage(
+        _conversationId,
+        messageId,
+        reason,
+      );
+
+      _messageRequestId++; // Ignore older in-flight message requests.
+
+      if (!mounted) return;
+
+      setState(() {
+        final index = _messages.indexWhere(
+          (m) => m['id'].toString() == messageId,
+        );
+
+        if (index != -1) {
+          _messages[index]['is_reported_by_me'] = true;
+        }
+      });
+
+      _showSnackBar('Message reported successfully.');
+    } on AuthExpiredException {
+      if (mounted) {
+        _showSnackBar('Your session has expired. Please log in again.');
+      }
+    } catch (e) {
+      if (mounted) _showSnackBar('Failed to report message: $e');
+    } finally {
+      detailsController.dispose();
+    }
+  }
+
+  Future<void> _unreportMessage(Map<String, dynamic> message) async {
+    final messageId = message['id']?.toString();
+    if (messageId == null || messageId.isEmpty) return;
+
+    try {
+      await widget.api.unreportMessage(_conversationId, messageId);
+
+      _messageRequestId++; // Ignore older in-flight message requests.
+
+      if (!mounted) return;
+
+      setState(() {
+        final index = _messages.indexWhere(
+          (m) => m['id'].toString() == messageId,
+        );
+
+        if (index != -1) {
+          _messages[index]['is_reported_by_me'] = false;
+        }
+      });
+
+      _showSnackBar('Report removed successfully.');
+    } on AuthExpiredException {
+      if (mounted) {
+        _showSnackBar('Your session has expired. Please log in again.');
+      }
+    } catch (e) {
+      if (mounted) _showSnackBar('Failed to remove report: $e');
+    }
+  }
+
   void _showMessageOptions(Map<String, dynamic> message) {
+    final isMine = _isMine(message);
+    final isReported = _isReported(message);
+
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: Colors.white,
@@ -483,28 +636,49 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
                 ),
               ),
               const SizedBox(height: 8),
-              ListTile(
-                leading: const Icon(Icons.edit_outlined),
-                title: const Text('Edit message'),
-                onTap: () {
-                  Navigator.pop(sheetContext);
-                  _editMessage(message);
-                },
-              ),
-              ListTile(
-                leading: const Icon(
-                  Icons.delete_outline,
-                  color: Colors.red,
+              if (isMine) ...[
+                ListTile(
+                  leading: const Icon(Icons.edit_outlined),
+                  title: const Text('Edit message'),
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    _editMessage(message);
+                  },
                 ),
-                title: const Text(
-                  'Delete message',
-                  style: TextStyle(color: Colors.red),
+                ListTile(
+                  leading: const Icon(
+                    Icons.delete_outline,
+                    color: Colors.red,
+                  ),
+                  title: const Text(
+                    'Delete message',
+                    style: TextStyle(color: Colors.red),
+                  ),
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    _confirmDeleteMessage(message);
+                  },
                 ),
-                onTap: () {
-                  Navigator.pop(sheetContext);
-                  _confirmDeleteMessage(message);
-                },
-              ),
+              ] else
+                ListTile(
+                  leading: Icon(
+                    isReported
+                        ? Icons.flag
+                        : Icons.flag_outlined,
+                    color: isReported ? Colors.orange : Colors.grey.shade700,
+                  ),
+                  title: Text(
+                    isReported ? 'Unreport message' : 'Report message',
+                  ),
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    if (isReported) {
+                      _unreportMessage(message);
+                    } else {
+                      _reportMessage(message);
+                    }
+                  },
+                ),
             ],
           ),
         ),
@@ -706,6 +880,7 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
         final isMine = _isMine(message);
         final content = _value(message['content']);
         final time = _formatTime(message['created_at']);
+        final isReported = _isReported(message);
         final sender = isMine
             ? 'You'
             : _value(message['sender_name'], 'Student');
@@ -714,9 +889,7 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
           alignment:
               isMine ? Alignment.centerRight : Alignment.centerLeft,
           child: GestureDetector(
-            onLongPress: isMine
-                ? () => _showMessageOptions(message)
-                : null,
+            onLongPress: () => _showMessageOptions(message),
             child: Container(
               constraints: BoxConstraints(
                 maxWidth: MediaQuery.of(context).size.width * 0.78,
@@ -774,12 +947,30 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
                     ],
                   ),
                   const SizedBox(height: 4),
-                  Text(
-                    content,
-                    style: TextStyle(
-                      color: isMine ? Colors.white : Colors.black87,
-                      fontSize: 15,
-                    ),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          content,
+                          style: TextStyle(
+                            color: isMine ? Colors.white : Colors.black87,
+                            fontSize: 15,
+                          ),
+                        ),
+                      ),
+                      if (isReported) ...[
+                        const SizedBox(width: 6),
+                        Tooltip(
+                          message: 'You reported this message',
+                          child: Icon(
+                            Icons.flag,
+                            size: 16,
+                            color: isMine ? Colors.white70 : Colors.orange.shade700,
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                 ],
               ),
