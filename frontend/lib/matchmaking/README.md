@@ -59,8 +59,7 @@ service-role backend must continue deriving identity and checking authorization
 explicitly in any future invitation write endpoints.
 
 The accepted-partners list is read-only. Sending invitations is implemented;
-accept/decline UI, chat creation, declined-request retries and connection removal
-remain separate workflows. Interest alone never creates an accepted match. Until invitation
+chat creation, declined-request retries and connection removal remain separate workflows. Interest alone never creates an accepted match. Until invitation
 acceptance writes accepted rows, new accounts correctly see No matches yet.
 
 
@@ -76,5 +75,28 @@ The student_matching SQL must be applied first.
 Repeated outgoing pending requests return success without another insert. An
 incoming pending request, an existing accepted match, or a declined request
 returns 409 without changing the row. The unique unordered-pair index handles
-concurrent sends. Invitations are not email/push notifications. The recipient
-inbox and accept/decline controls still need implementation.
+concurrent sends. Invitations are not email/push notifications. Recipients can now respond from Incoming invitations.
+
+
+## Incoming invitations and responses
+
+GET /matchmaking/invitations lists pending requests addressed to the verified
+student, with visibility-filtered sender names/courses/interests. The inbox
+supports Accept/Decline, refresh and errors that retain the row for retry.
+PATCH /matchmaking/invitations/{invitation_id} accepts a status of accepted or
+declined. It scopes both reads and writes to the authenticated recipient and
+updates only pending requests. Identical repeated responses are idempotent;
+conflicting or concurrent responses return 409. A sender cannot accept their
+own outgoing request. Accepted rows appear in both participants' Matched partners.
+
+GET /matchmaking/invitations/count supplies an in-app badge on the Match tab
+and Incoming invitations button. Counts refresh every 15 seconds while their
+widgets are mounted and when returning from the inbox. The existing
+LocalNotificationService also shows a banner for each newly detected invitation
+after the initial successful poll. Existing pending requests seed the baseline
+and appear in the badge without repeat alerts on login. Tapping a banner opens
+the inbox, including a notification launch handled by main.dart. Schedule
+reminder synchronization preserves invitation/chat alerts. Detection is app-side
+polling, not background push delivery. No extra SQL is required beyond student_matching.sql.
+Chat creation remains for the chat integration owner; acceptance currently only
+updates student_matching and does not insert chat_conversations.

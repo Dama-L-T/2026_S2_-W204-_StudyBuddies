@@ -38,6 +38,25 @@ def find_students(criterion: Literal['courses', 'interests', 'both'] = 'both', u
     return run(lambda: service.recommendations(db, user_id, criterion))
 
 
+class InvitationResponse(BaseModel):
+    status: Literal['accepted', 'declined']
+
+
+@router.get('/invitations')
+def incoming_invitations(user_id: str = Depends(get_current_user_id), db=Depends(database)):
+    return run(lambda: service.incoming_invitations(db, user_id))
+
+
+@router.get('/invitations/count')
+def invitation_count(user_id: str = Depends(get_current_user_id), db=Depends(database)):
+    return run(lambda: service.invitation_count(db, user_id))
+
+
+@router.patch('/invitations/{invitation_id}')
+def respond_to_invitation(invitation_id: UUID, payload: InvitationResponse, user_id: str = Depends(get_current_user_id), db=Depends(database)):
+    return run(lambda: service.respond_to_invitation(db, user_id, str(invitation_id), payload.status))
+
+
 @router.post('/invitations/{target_id}')
 def send_invitation(target_id: UUID, user_id: str = Depends(get_current_user_id), db=Depends(database)):
     return run(lambda: service.send_invitation(db, user_id, str(target_id)))

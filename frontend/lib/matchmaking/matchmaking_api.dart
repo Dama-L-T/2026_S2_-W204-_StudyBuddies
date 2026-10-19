@@ -14,6 +14,16 @@ class Recommendation {
   final List<String> interests;
 }
 
+class StudyInvitation {
+  StudyInvitation.fromJson(Map<String, dynamic> json)
+    : id = json['id'] as String,
+      profile = StudentProfile.fromJson(
+        Map<String, dynamic>.from(json['profile'] as Map),
+      );
+  final String id;
+  final StudentProfile profile;
+}
+
 class MatchmakingApi {
   MatchmakingApi(this.baseUrl, this.accessToken, {http.Client? client})
     : _client = client ?? http.Client();
@@ -70,6 +80,31 @@ class MatchmakingApi {
     '/matchmaking/choices/${Uri.encodeComponent(id)}',
     {'status': status},
   );
+  Future<List<StudyInvitation>> incomingInvitations() async => [
+    for (final item in await request('GET', '/matchmaking/invitations') as List)
+      StudyInvitation.fromJson(Map<String, dynamic>.from(item as Map)),
+  ];
+
+  Future<List<String>> pendingInvitationIds() async {
+    final response =
+        await request('GET', '/matchmaking/invitations/count') as Map;
+    return List<String>.from(response['ids'] as List);
+  }
+
+  Future<int> invitationCount() async {
+    final response =
+        await request('GET', '/matchmaking/invitations/count') as Map;
+    return response['count'] as int;
+  }
+
+  Future<void> respondToInvitation(String id, bool accept) async {
+    await request(
+      'PATCH',
+      '/matchmaking/invitations/${Uri.encodeComponent(id)}',
+      {'status': accept ? 'accepted' : 'declined'},
+    );
+  }
+
   Future<String> sendInvitation(String id) async {
     final response =
         await request(

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../widgets/app_bar.dart';
 import '../profile/profile.dart';
@@ -7,6 +8,7 @@ import 'matchmaking_api.dart';
 part 'matchmaking_widgets.dart';
 part 'matchmaking_lists.dart';
 part 'matched_partners.dart';
+part 'invitation_inbox.dart';
 
 class MatchmakingPage extends StatefulWidget {
   const MatchmakingPage({
@@ -14,10 +16,12 @@ class MatchmakingPage extends StatefulWidget {
     required this.apiBaseUrl,
     required this.accessToken,
     this.api,
+    this.openInvitationsOnLaunch = false,
   });
   final String apiBaseUrl;
   final String accessToken;
   final MatchmakingApi? api;
+  final bool openInvitationsOnLaunch;
   @override
   State<MatchmakingPage> createState() => _MatchmakingPageState();
 }
@@ -30,6 +34,9 @@ class _MatchmakingPageState extends State<MatchmakingPage> {
   final _criteria = <String>{'courses', 'interests'};
   final _sessionSkipped = <String>{};
   final _sentInvitations = <String>{};
+  int _invitationCount = 0;
+  Timer? _invitationTimer;
+  bool _checkingInvitations = false;
   bool _busy = true;
   bool _swiping = false;
   String? _error;
@@ -38,12 +45,44 @@ class _MatchmakingPageState extends State<MatchmakingPage> {
   void initState() {
     super.initState();
     _loadProfile();
+    if (widget.openInvitationsOnLaunch) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) unawaited(_openInvitations());
+      });
+    }
+    unawaited(_refreshInvitationCount());
+    _invitationTimer = Timer.periodic(
+      const Duration(seconds: 15),
+      (_) => _refreshInvitationCount(),
+    );
   }
 
   @override
   void dispose() {
+    _invitationTimer?.cancel();
     if (widget.api == null) _api.close();
     super.dispose();
+  }
+
+  Future<void> _refreshInvitationCount() async {
+    if (_checkingInvitations) return;
+    _checkingInvitations = true;
+    try {
+      final count = await _api.invitationCount();
+      if (mounted) setState(() => _invitationCount = count);
+    } catch (_) {
+      // The inbox shows actionable errors; keep the last successful badge.
+    } finally {
+      _checkingInvitations = false;
+    }
+  }
+
+  Future<void> _openInvitations() async {
+    await Navigator.push<void>(
+      context,
+      MaterialPageRoute(builder: (_) => _InvitationInbox(api: _api)),
+    );
+    if (mounted) await _refreshInvitationCount();
   }
 
   String _message(Object error) =>
@@ -204,6 +243,17 @@ class _MatchmakingPageState extends State<MatchmakingPage> {
     body: ListView(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
       children: [
+        OutlinedButton.icon(
+          key: const Key('incoming-invitations'),
+          onPressed: _openInvitations,
+          icon: Badge(
+            isLabelVisible: _invitationCount > 0,
+            label: Text('$_invitationCount'),
+            child: const Icon(Icons.mail_outline),
+          ),
+          label: const Text('Incoming invitations'),
+        ),
+        const SizedBox(height: 12),
         Row(
           children: [
             Expanded(

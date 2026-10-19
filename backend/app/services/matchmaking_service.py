@@ -178,3 +178,51 @@ def send_invitation(db, user_id, target_id):
     if not result:
         raise RuntimeError('Invitation was not saved.')
     return describe(result[0])
+
+
+def invitation_count(db, user_id):
+    invitations = rows(db.table('student_matching').select('id').eq(
+        'target_student_id', user_id
+    ).eq('status', 'pending').order('id'))
+    return {'count': len(invitations), 'ids': [invitation['id'] for invitation in invitations]}
+
+
+def incoming_invitations(db, user_id):
+    invitations = rows(db.table('student_matching').select(
+        'id,student_id,created_at'
+    ).eq('target_student_id', user_id).eq('status', 'pending').order('id'))
+    ids = sorted({invitation['student_id'] for invitation in invitations})
+    profiles = {}
+    for start in range(0, len(ids), 100):
+        for row in rows(db.table('profiles').select(
+            'user_id,name,courses,interests,profile_image,'
+            'name_visible,courses_visible,interests_visible'
+        ).in_('user_id', ids[start:start + 100]).order('user_id')):
+            profile = {'user_id': row['user_id'], 'profile_image': row.get('profile_image') or ''}
+            for field in ('name', 'courses', 'interests'):
+                profile[field] = (row.get(field) or '') if row.get(field + '_visible') is True else ''
+            profiles[row['user_id']] = profile
+    result = [{'id': invitation['id'], 'created_at': invitation['created_at'],
+               'profile': profiles.get(invitation['student_id'], {'user_id': invitation['student_id']})}
+              for invitation in invitations]
+    return sorted(result, key=lambda invitation: (invitation['created_at'], invitation['id']), reverse=True)
+
+
+def respond_to_invitation(db, user_id, invitation_id, status):
+    if status not in ('accepted', 'declined'):
+        raise ValueError('Choose accepted or declined.')
+    existing = db.table('student_matching').select('id,status').eq(
+        'id', invitation_id
+    ).eq('target_student_id', user_id).limit(1).execute().data or []
+    if not existing:
+        raise LookupError('Invitation not found.')
+    if existing[0]['status'] == status:
+        return {'id': invitation_id, 'status': status}
+    if existing[0]['status'] != 'pending':
+        raise InvitationConflict('This invitation has already been answered. Refresh your invitations.')
+    updated = db.table('student_matching').update({'status': status}).eq(
+        'id', invitation_id
+    ).eq('target_student_id', user_id).eq('status', 'pending').execute().data or []
+    if not updated:
+        raise InvitationConflict('This invitation changed. Refresh your invitations.')
+    return {'id': invitation_id, 'status': status}
