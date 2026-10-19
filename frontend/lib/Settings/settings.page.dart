@@ -346,7 +346,7 @@ class _ChatActionListPageState extends State<ChatActionListPage> {
 
     try {
       if (isBlocked) {
-        await widget.api.unblockUser(id.toString());
+        await widget.api.unblockUserById(id.toString());
       } else {
         await widget.api.restoreHiddenConversation(id.toString());
       }
