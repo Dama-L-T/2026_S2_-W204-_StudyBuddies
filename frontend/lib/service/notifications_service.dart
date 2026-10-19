@@ -5,7 +5,7 @@ import 'package:timezone/timezone.dart' as timezone;
 
 final notificationService = LocalNotificationService();
 
-enum NotificationTargetType { assignment, event, chat, invitation }
+enum NotificationTargetType { assignment, event, chat, invitation, connection }
 
 class NotificationTarget {
   const NotificationTarget({required this.type, required this.id});
@@ -182,6 +182,10 @@ class LocalNotificationService {
 
   String eventPayload(String eventId) {
     return 'event:$eventId';
+  }
+
+  String connectionPayload(String invitationId) {
+    return 'connection:$invitationId';
   }
 
   String invitationPayload(String invitationId) {

@@ -246,3 +246,10 @@ def invitation_statuses(db, user_id):
             raise ValueError('Unknown invitation status.')
         statuses[partner_id] = status
     return statuses
+
+
+def accepted_invitations(db, user_id):
+    invitations = rows(db.table('student_matching').select('id,target_student_id').eq(
+        'student_id', user_id
+    ).eq('status', 'accepted').order('id'))
+    return {'user_id': user_id, 'invitations': invitations}

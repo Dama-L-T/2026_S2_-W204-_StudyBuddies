@@ -1,5 +1,6 @@
 import 'dart:ui';
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -49,6 +50,7 @@ class _AppBottomNavigationBarState extends State<AppBottomNavigationBar> {
   final Set<String> _knownInvitationIds = {};
   bool _hasInitialisedInvitations = false;
   bool _openInvitationInbox = false;
+  bool _openMatchedPartners = false;
   int _matchPageVersion = 0;
   bool _checkingInvitations = false;
 
@@ -112,6 +114,15 @@ class _AppBottomNavigationBarState extends State<AppBottomNavigationBar> {
     final target = NotificationTarget.parse(payload);
     if (target == null) return;
 
+    if (target.type == NotificationTargetType.connection) {
+      currentIndex = 1;
+      _pendingChatConversationId = null;
+      _openInvitationInbox = false;
+      _openMatchedPartners = true;
+      _matchPageVersion++;
+      return;
+    }
+    _openMatchedPartners = false;
     if (target.type == NotificationTargetType.invitation) {
       currentIndex = 1;
       _pendingChatConversationId = null;
@@ -213,6 +224,7 @@ class _AppBottomNavigationBarState extends State<AppBottomNavigationBar> {
           setState(() {
             currentIndex = index;
             _openInvitationInbox = false;
+            _openMatchedPartners = false;
 
             if (index != 2) {
               _pendingChatConversationId = null;
@@ -268,6 +280,11 @@ class _AppBottomNavigationBarState extends State<AppBottomNavigationBar> {
     try {
       await _loadStoredTokens();
       api = MatchmakingApi(widget.apiBaseUrl, _accessToken);
+      try {
+        await _checkAcceptedInvitations(api);
+      } catch (_) {
+        // Retry acceptance alerts next poll without blocking incoming invites.
+      }
       final ids = await api.pendingInvitationIds();
       if (!mounted) return;
       setState(() => _invitationCount = ids.length);
@@ -291,6 +308,31 @@ class _AppBottomNavigationBarState extends State<AppBottomNavigationBar> {
     } finally {
       api?.close();
       _checkingInvitations = false;
+    }
+  }
+
+  Future<void> _checkAcceptedInvitations(MatchmakingApi api) async {
+    final response = await api.acceptedInvitations();
+    if (!mounted) return;
+    final userId = response['user_id'] as String;
+    final storageKey = 'notified-accepted-invitations.$userId';
+    final saved = await _storage.read(key: storageKey);
+    final known = saved == null
+        ? <String>{}
+        : List<String>.from(jsonDecode(saved) as List).toSet();
+    for (final row in response['invitations'] as List) {
+      final id = row['id'] as String;
+      if (known.contains(id)) continue;
+      if (!mounted) return;
+      await notificationService.showNotification(
+        id: notificationService.notificationIdFromText('connection:$id'),
+        title: 'Study invitation accepted',
+        body:
+            'You have a new study connection. Tap to view your matched partners.',
+        payload: notificationService.connectionPayload(id),
+      );
+      known.add(id);
+      await _storage.write(key: storageKey, value: jsonEncode(known.toList()));
     }
   }
 
@@ -408,6 +450,7 @@ class _AppBottomNavigationBarState extends State<AppBottomNavigationBar> {
         return MatchmakingPage(
           key: ValueKey('match-$_matchPageVersion'),
           openInvitationsOnLaunch: _openInvitationInbox,
+          openPartnersOnLaunch: _openMatchedPartners,
           apiBaseUrl: widget.apiBaseUrl,
           accessToken: _accessToken,
         );

@@ -114,3 +114,15 @@ reopen the page to update statuses. A successful send immediately becomes Pendin
 invite. Failed status loads disable sending until retry succeeds. The existing
 backend unique-pair constraint and duplicate handling remain authoritative across
 devices; there is no resend operation or extra SQL migration.
+
+
+## Acceptance notifications
+
+GET /matchmaking/invitations/accepted returns accepted outgoing requests only,
+scoped to the verified sender. The existing 15-second app poll sends a local
+acceptance notification for each unseen ID, including acceptances detected on
+startup. Notified IDs are saved in secure storage per account on this device,
+so successful alerts are not repeated on restart. A first run may alert for
+existing accepted invitations; detection requires the app to run. Clearing app
+data permits re-alerting. Tapping the alert opens Matched partners. No extra SQL
+or notification table is required.

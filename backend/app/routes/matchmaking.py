@@ -47,6 +47,11 @@ def incoming_invitations(user_id: str = Depends(get_current_user_id), db=Depends
     return run(lambda: service.incoming_invitations(db, user_id))
 
 
+@router.get('/invitations/accepted')
+def accepted_invitations(user_id: str = Depends(get_current_user_id), db=Depends(database)):
+    return run(lambda: service.accepted_invitations(db, user_id))
+
+
 @router.get('/invitations/statuses')
 def invitation_statuses(user_id: str = Depends(get_current_user_id), db=Depends(database)):
     return run(lambda: service.invitation_statuses(db, user_id))
