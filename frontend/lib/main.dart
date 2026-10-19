@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
-
 import 'auth/login_screen.dart';
 import 'widgets/bottom_navigation_bar.dart';
 import 'service/notifications_service.dart';

@@ -5,7 +5,7 @@ import 'package:timezone/timezone.dart' as timezone;
 
 final notificationService = LocalNotificationService();
 
-enum NotificationTargetType { assignment, event, chat }
+enum NotificationTargetType { assignment, event, chat, invitation }
 
 class NotificationTarget {
   const NotificationTarget({required this.type, required this.id});
@@ -57,7 +57,9 @@ class LocalNotificationService {
     timezone_data.initializeTimeZones();
     await _setDeviceTimeZone();
 
-    const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const androidSettings = AndroidInitializationSettings(
+      '@mipmap/ic_launcher',
+    );
     const iosSettings = DarwinInitializationSettings(
       requestAlertPermission: true,
       requestBadgePermission: true,
@@ -78,12 +80,14 @@ class LocalNotificationService {
 
     await _notifications
         .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>()
+          AndroidFlutterLocalNotificationsPlugin
+        >()
         ?.requestNotificationsPermission();
 
     await _notifications
         .resolvePlatformSpecificImplementation<
-            IOSFlutterLocalNotificationsPlugin>()
+          IOSFlutterLocalNotificationsPlugin
+        >()
         ?.requestPermissions(alert: true, badge: true, sound: true);
 
     _isInitialised = true;
@@ -153,7 +157,9 @@ class LocalNotificationService {
         .pendingNotificationRequests();
 
     for (final notification in pendingNotifications) {
-      if (NotificationTarget.parse(notification.payload) != null) {
+      final target = NotificationTarget.parse(notification.payload);
+      if (target?.type == NotificationTargetType.assignment ||
+          target?.type == NotificationTargetType.event) {
         await _notifications.cancel(id: notification.id);
       }
     }
@@ -178,6 +184,10 @@ class LocalNotificationService {
     return 'event:$eventId';
   }
 
+  String invitationPayload(String invitationId) {
+    return 'invitation:$invitationId';
+  }
+
   String chatPayload(String conversationId) {
     return 'chat:$conversationId';
   }
@@ -187,7 +197,8 @@ class LocalNotificationService {
       android: AndroidNotificationDetails(
         'study_buddies_notifications',
         'Study Buddies Notifications',
-        channelDescription: 'Notifications for messages, assignments and events',
+        channelDescription:
+            'Notifications for messages, assignments and events',
         importance: Importance.high,
         priority: Priority.high,
         playSound: true,

@@ -1,4 +1,3 @@
-
 import 'dart:async';
 import 'dart:convert';
 
@@ -19,7 +18,7 @@ class AuthExpiredException implements Exception {
 class ChatApiClient {
   final String apiBaseUrl;
   final FlutterSecureStorage storage;
-  
+
   String? currentUserId;
   String? _accessToken;
   String? _fallbackRefreshToken;
@@ -30,8 +29,8 @@ class ChatApiClient {
     required String? accessToken,
     required String? refreshToken,
     required this.storage,
-  })  : _accessToken = accessToken,
-        _fallbackRefreshToken = refreshToken;
+  }) : _accessToken = accessToken,
+       _fallbackRefreshToken = refreshToken;
 
   Future<List<Map<String, dynamic>>> getConversations() async {
     final result = await _request('GET', '/chat/conversations');
@@ -40,26 +39,16 @@ class ChatApiClient {
       currentUserId = result['current_user_id']?.toString();
     }
 
-    return _extractList(result, [
-      'conversations',
-      'items',
-      'data',
-    ]);
+    return _extractList(result, ['conversations', 'items', 'data']);
   }
 
-  Future<List<Map<String, dynamic>>> getMessages(
-    String conversationId,
-  ) async {
+  Future<List<Map<String, dynamic>>> getMessages(String conversationId) async {
     final result = await _request(
       'GET',
       '/chat/conversations/$conversationId/messages',
     );
 
-    return _extractList(result, [
-      'messages',
-      'items',
-      'data',
-    ]);
+    return _extractList(result, ['messages', 'items', 'data']);
   }
 
   Future<Map<String, dynamic>> sendMessage(
@@ -91,10 +80,7 @@ class ChatApiClient {
     );
   }
 
-  Future<void> deleteMessage(
-    String conversationId,
-    String messageId,
-  ) async {
+  Future<void> deleteMessage(String conversationId, String messageId) async {
     await _request(
       'DELETE',
       '/chat/conversations/$conversationId/messages/$messageId',
@@ -113,10 +99,7 @@ class ChatApiClient {
     );
   }
 
-  Future<void> unreportMessage(
-    String conversationId,
-    String messageId,
-  ) async {
+  Future<void> unreportMessage(String conversationId, String messageId) async {
     await _request(
       'DELETE',
       '/chat/conversations/$conversationId/messages/$messageId/report',
@@ -124,15 +107,10 @@ class ChatApiClient {
   }
 
   Future<void> markConversationRead(String conversationId) async {
-    await _request(
-      'POST',
-      '/chat/conversations/$conversationId/read',
-    );
+    await _request('POST', '/chat/conversations/$conversationId/read');
   }
-  
-  Future<Map<String, dynamic>> getBlockStatus(
-    String conversationId,
-  ) async {
+
+  Future<Map<String, dynamic>> getBlockStatus(String conversationId) async {
     final result = await _request(
       'GET',
       '/chat/conversations/$conversationId/block-status',
@@ -146,31 +124,19 @@ class ChatApiClient {
   }
 
   Future<void> blockUser(String conversationId) async {
-    await _request(
-      'POST',
-      '/chat/conversations/$conversationId/block',
-    );
+    await _request('POST', '/chat/conversations/$conversationId/block');
   }
 
   Future<void> unblockUser(String conversationId) async {
-    await _request(
-      'DELETE',
-      '/chat/conversations/$conversationId/block',
-    );
+    await _request('DELETE', '/chat/conversations/$conversationId/block');
   }
 
   Future<void> unblockUserById(String blockedUserId) async {
-    await _request(
-      'DELETE',
-      '/chat/blocked-users/$blockedUserId',
-    );
+    await _request('DELETE', '/chat/blocked-users/$blockedUserId');
   }
 
   Future<void> hideConversation(String conversationId) async {
-    await _request(
-      'POST',
-      '/chat/conversations/$conversationId/hide',
-    );
+    await _request('POST', '/chat/conversations/$conversationId/hide');
   }
 
   Future<dynamic> _request(
@@ -198,24 +164,16 @@ class ChatApiClient {
         response = await http.get(uri, headers: headers);
         break;
       case 'POST':
-        response = await http.post(
-          uri,
-          headers: headers,
-          body: encodedBody,
-        );
+        response = await http.post(uri, headers: headers, body: encodedBody);
+        break;
+      case 'PUT':
+        response = await http.put(uri, headers: headers, body: encodedBody);
         break;
       case 'PATCH':
-        response = await http.patch(
-          uri,
-          headers: headers,
-          body: encodedBody,
-        );
+        response = await http.patch(uri, headers: headers, body: encodedBody);
         break;
       case 'DELETE':
-        response = await http.delete(
-          uri,
-          headers: headers,
-        );
+        response = await http.delete(uri, headers: headers);
         break;
       default:
         throw UnsupportedError('Unsupported HTTP method: $method');
@@ -228,12 +186,7 @@ class ChatApiClient {
         throw AuthExpiredException();
       }
 
-      return _request(
-        method,
-        path,
-        body: body,
-        retryAfterRefresh: false,
-      );
+      return _request(method, path, body: body, retryAfterRefresh: false);
     }
 
     if (response.statusCode == 401) {
@@ -272,8 +225,8 @@ class ChatApiClient {
 
   Future<bool> _performRefresh() async {
     try {
-      final token = await storage.read(key: 'refresh_token') ??
-          _fallbackRefreshToken;
+      final token =
+          await storage.read(key: 'refresh_token') ?? _fallbackRefreshToken;
 
       if (token == null || token.isEmpty) {
         await _clearTokens();
@@ -311,17 +264,11 @@ class ChatApiClient {
       }
 
       _accessToken = newAccessToken;
-      await storage.write(
-        key: 'access_token',
-        value: newAccessToken,
-      );
+      await storage.write(key: 'access_token', value: newAccessToken);
 
       if (newRefreshToken != null && newRefreshToken.isNotEmpty) {
         _fallbackRefreshToken = newRefreshToken;
-        await storage.write(
-          key: 'refresh_token',
-          value: newRefreshToken,
-        );
+        await storage.write(key: 'refresh_token', value: newRefreshToken);
       }
 
       return true;
@@ -386,9 +333,7 @@ class ChatApiClient {
     return Map<String, dynamic>.from(result as Map);
   }
 
-  Future<Map<String, dynamic>> updateLoginOtpSetting(
-    bool enabled,
-  ) async {
+  Future<Map<String, dynamic>> updateLoginOtpSetting(bool enabled) async {
     final result = await _request(
       'PUT',
       '/auth/login-otp-setting',
@@ -407,10 +352,7 @@ class ChatApiClient {
   }
 
   Future<void> restoreHiddenConversation(String conversationId) async {
-    await _request(
-      'DELETE',
-      '/chat/conversations/$conversationId/hide',
-    );
+    await _request('DELETE', '/chat/conversations/$conversationId/hide');
   }
 
   Future<void> sendPresenceHeartbeat() async {

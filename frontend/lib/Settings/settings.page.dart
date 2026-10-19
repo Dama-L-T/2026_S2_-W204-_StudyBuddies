@@ -59,7 +59,13 @@ class _SettingsPageState extends State<SettingsPage> {
         isLoading = false;
       });
 
-      debugPrint('Failed to load OTP setting: $error');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Could not load login verification: ${error.toString().replaceFirst('Exception: ', '')}',
+          ),
+        ),
+      );
     }
   }
 
@@ -86,7 +92,13 @@ class _SettingsPageState extends State<SettingsPage> {
         isUpdating = false;
       });
 
-      debugPrint('Failed to update OTP setting: $error');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Could not save login verification: ${error.toString().replaceFirst('Exception: ', '')}',
+          ),
+        ),
+      );
     }
   }
 
@@ -95,13 +107,11 @@ class _SettingsPageState extends State<SettingsPage> {
     return Scaffold(
       backgroundColor: Colors.black,
 
-      appBar: const AppBarWidget(
-        title: 'Settings',
-      ),
+      appBar: const AppBarWidget(title: 'Settings'),
 
       body: ListView(
         padding: const EdgeInsets.all(16),
-        children: [          
+        children: [
           const Text(
             'Chat',
             style: TextStyle(
@@ -148,7 +158,7 @@ class _SettingsPageState extends State<SettingsPage> {
                         builder: (_) => ChatActionListPage(
                           api: _api,
                           type: ChatActionType.blocked,
-                        )
+                        ),
                       ),
                     ),
                   ),
@@ -205,49 +215,40 @@ class _SettingsPageState extends State<SettingsPage> {
               borderRadius: BorderRadius.circular(16),
             ),
             child: isLoading
-              ? const Padding(
-                  padding: EdgeInsets.all(20),
-                  child: Center(
-                    child: CircularProgressIndicator(),
-                  ),
-                )
-              : SwitchListTile(
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 6,
-                  ),
-
-                  title: const Text(
-                    'Login verification',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
+                ? const Padding(
+                    padding: EdgeInsets.all(20),
+                    child: Center(child: CircularProgressIndicator()),
+                  )
+                : SwitchListTile(
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 6,
                     ),
-                  ),
 
-                  subtitle: const Text(
-                    'Require a verification code when logging in',
-                    style: TextStyle(
-                      color: Colors.grey,
-                      fontSize: 13,
+                    title: const Text(
+                      'Login verification',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
+
+                    subtitle: const Text(
+                      'Require a verification code when logging in',
+                      style: TextStyle(color: Colors.grey, fontSize: 13),
+                    ),
+
+                    value: loginOtpEnabled,
+
+                    onChanged: isUpdating ? null : _updateLoginOtpSetting,
                   ),
-
-                  value: loginOtpEnabled,
-
-                  onChanged: isUpdating
-                      ? null
-                      : _updateLoginOtpSetting,
-                ),
           ),
-
         ],
       ),
     );
   }
 }
-
 
 enum ChatActionType { blocked, hidden }
 
@@ -255,11 +256,7 @@ class ChatActionListPage extends StatefulWidget {
   final ChatApiClient api;
   final ChatActionType type;
 
-  const ChatActionListPage({
-    super.key,
-    required this.api,
-    required this.type,
-  });
+  const ChatActionListPage({super.key, required this.api, required this.type});
 
   @override
   State<ChatActionListPage> createState() => _ChatActionListPageState();
@@ -356,18 +353,14 @@ class _ChatActionListPageState extends State<ChatActionListPage> {
       setState(() {
         items.removeWhere((entry) {
           final entryId = isBlocked
-              ? (entry['blocked_user_id'] ??
-                  entry['user_id'] ??
-                  entry['id'])
+              ? (entry['blocked_user_id'] ?? entry['user_id'] ?? entry['id'])
               : (entry['conversation_id'] ?? entry['id']);
 
           return entryId?.toString() == id.toString();
         });
       });
 
-      _showMessage(
-        isBlocked ? 'Student unblocked.' : 'Conversation restored.',
-      );
+      _showMessage(isBlocked ? 'Student unblocked.' : 'Conversation restored.');
     } catch (e) {
       if (mounted) {
         _showMessage('Unable to update: $e');
@@ -376,9 +369,9 @@ class _ChatActionListPageState extends State<ChatActionListPage> {
   }
 
   void _showMessage(String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   @override
@@ -389,78 +382,77 @@ class _ChatActionListPageState extends State<ChatActionListPage> {
       body: isLoading
           ? const Center(child: CircularProgressIndicator())
           : error != null
-              ? Center(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Text(
-                        'Unable to load conversations.',
-                        style: TextStyle(color: Colors.white),
-                      ),
-                      const SizedBox(height: 8),
-                      TextButton(
-                        onPressed: _loadItems,
-                        child: const Text('Try again'),
-                      ),
-                    ],
+          ? Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    'Unable to load conversations.',
+                    style: TextStyle(color: Colors.white),
                   ),
-                )
-              : items.isEmpty
-                  ? Center(
-                      child: Text(
-                        isBlocked
-                            ? 'You have not blocked anyone.'
-                            : 'You have no hidden conversations.',
-                        style: const TextStyle(color: Colors.grey),
+                  const SizedBox(height: 8),
+                  TextButton(
+                    onPressed: _loadItems,
+                    child: const Text('Try again'),
+                  ),
+                ],
+              ),
+            )
+          : items.isEmpty
+          ? Center(
+              child: Text(
+                isBlocked
+                    ? 'You have not blocked anyone.'
+                    : 'You have no hidden conversations.',
+                style: const TextStyle(color: Colors.grey),
+              ),
+            )
+          : ListView.separated(
+              padding: const EdgeInsets.all(16),
+              itemCount: items.length,
+              separatorBuilder: (_, __) => const SizedBox(height: 10),
+              itemBuilder: (context, index) {
+                final item = items[index];
+
+                final name = isBlocked
+                    ? (item['blocked_user_name'] ??
+                          item['user_name'] ??
+                          item['name'] ??
+                          'Student')
+                    : (item['other_user_name'] ??
+                          item['student_name'] ??
+                          item['name'] ??
+                          'Conversation');
+
+                return Material(
+                  color: const Color(0xFF1A1A1A),
+                  borderRadius: BorderRadius.circular(14),
+                  clipBehavior: Clip.antiAlias,
+                  child: ListTile(
+                    tileColor: const Color(0xFF1A1A1A),
+                    splashColor: Colors.white12,
+                    leading: CircleAvatar(
+                      backgroundColor: Colors.blue.shade50,
+                      child: Icon(
+                        isBlocked ? Icons.block : Icons.visibility_off_outlined,
+                        color: Colors.blue.shade700,
                       ),
-                    )
-                  : ListView.separated(
-                      padding: const EdgeInsets.all(16),
-                      itemCount: items.length,
-                      separatorBuilder: (_, __) =>
-                          const SizedBox(height: 10),
-                      itemBuilder: (context, index) {
-                        final item = items[index];
-
-                        final name = isBlocked
-                            ? (item['blocked_user_name'] ??
-                                item['user_name'] ??
-                                item['name'] ??
-                                'Student')
-                            : (item['other_user_name'] ??
-                                item['student_name'] ??
-                                item['name'] ??
-                                'Conversation');
-
-                        return Material(
-                          color: const Color(0xFF1A1A1A),
-                          borderRadius: BorderRadius.circular(14),
-                          clipBehavior: Clip.antiAlias,
-                          child: ListTile(
-                            tileColor: const Color(0xFF1A1A1A),
-                            splashColor: Colors.white12,
-                            leading: CircleAvatar(
-                              backgroundColor: Colors.blue.shade50,
-                              child: Icon(
-                                isBlocked ? Icons.block : Icons.visibility_off_outlined,
-                                color: Colors.blue.shade700,
-                              ),
-                            ),
-                            title: Text(
-                              name.toString(),
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                            trailing: TextButton(
-                              onPressed: () => _restoreItem(item),
-                              child: Text(isBlocked ? 'Unblock' : 'Unhide'),
-                            ),
-                          ),
-                        );
-                      },
                     ),
+                    title: Text(
+                      name.toString(),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    trailing: TextButton(
+                      onPressed: () => _restoreItem(item),
+                      child: Text(isBlocked ? 'Unblock' : 'Unhide'),
+                    ),
+                  ),
+                );
+              },
+            ),
     );
   }
 }

@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../Schedule/schedule.page.dart';
+import '../matchmaking/matchmaking.page.dart';
+import '../matchmaking/matchmaking_api.dart';
 import '../Settings/settings.page.dart';
 import '../profile/profile.dart';
 import '../service/notifications_service.dart';
@@ -27,12 +29,10 @@ class AppBottomNavigationBar extends StatefulWidget {
   final String? initialNotificationPayload;
 
   @override
-  State<AppBottomNavigationBar> createState() =>
-      _AppBottomNavigationBarState();
+  State<AppBottomNavigationBar> createState() => _AppBottomNavigationBarState();
 }
 
-class _AppBottomNavigationBarState
-    extends State<AppBottomNavigationBar> {
+class _AppBottomNavigationBarState extends State<AppBottomNavigationBar> {
   final _storage = const FlutterSecureStorage();
 
   int currentIndex = 0;
@@ -44,6 +44,13 @@ class _AppBottomNavigationBarState
   late String _refreshToken;
   late ChatApiClient _chatApi;
   Timer? _chatNotificationTimer;
+  Timer? _invitationTimer;
+  int _invitationCount = 0;
+  final Set<String> _knownInvitationIds = {};
+  bool _hasInitialisedInvitations = false;
+  bool _openInvitationInbox = false;
+  int _matchPageVersion = 0;
+  bool _checkingInvitations = false;
 
   final Set<String> _knownChatMessageIds = {};
   bool _hasInitialisedChatTracking = false;
@@ -68,6 +75,11 @@ class _AppBottomNavigationBarState
 
     unawaited(_syncReminderNotifications());
     unawaited(_checkChatNotifications());
+    unawaited(_checkInvitations());
+    _invitationTimer = Timer.periodic(
+      const Duration(seconds: 15),
+      (_) => _checkInvitations(),
+    );
 
     _chatNotificationTimer = Timer.periodic(
       const Duration(seconds: 3),
@@ -78,8 +90,10 @@ class _AppBottomNavigationBarState
   @override
   void dispose() {
     _chatNotificationTimer?.cancel();
+    _invitationTimer?.cancel();
 
-    if (notificationService.onNotificationTapped == _handleNotificationPayload) {
+    if (notificationService.onNotificationTapped ==
+        _handleNotificationPayload) {
       notificationService.onNotificationTapped = null;
     }
 
@@ -98,6 +112,15 @@ class _AppBottomNavigationBarState
     final target = NotificationTarget.parse(payload);
     if (target == null) return;
 
+    if (target.type == NotificationTargetType.invitation) {
+      currentIndex = 1;
+      _pendingChatConversationId = null;
+      _openInvitationInbox = true;
+      _matchPageVersion++;
+      return;
+    }
+
+    _openInvitationInbox = false;
     if (target.type == NotificationTargetType.chat) {
       currentIndex = 2;
       _pendingChatConversationId = target.id;
@@ -116,18 +139,11 @@ class _AppBottomNavigationBarState
       extendBody: true,
       body: _buildPage(currentIndex),
       bottomNavigationBar: Container(
-        margin: const EdgeInsets.only(
-          left: 12,
-          right: 12,
-          bottom: 12,
-        ),
+        margin: const EdgeInsets.only(left: 12, right: 12, bottom: 12),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(30),
           child: BackdropFilter(
-            filter: ImageFilter.blur(
-              sigmaX: 15,
-              sigmaY: 15,
-            ),
+            filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
             child: Container(
               height: 60,
               decoration: BoxDecoration(
@@ -156,11 +172,7 @@ class _AppBottomNavigationBarState
                         icon: Icons.people,
                         label: 'Match',
                       ),
-                      _buildNavItem(
-                        index: 2,
-                        icon: Icons.chat,
-                        label: 'Chat',
-                      ),
+                      _buildNavItem(index: 2, icon: Icons.chat, label: 'Chat'),
                       _buildNavItem(
                         index: 3,
                         icon: Icons.person,
@@ -192,7 +204,7 @@ class _AppBottomNavigationBarState
     return Expanded(
       child: GestureDetector(
         onTap: () async {
-          if (index == 0) {
+          if (index == 0 || index == 1) {
             await _loadStoredTokens();
           }
 
@@ -200,6 +212,7 @@ class _AppBottomNavigationBarState
 
           setState(() {
             currentIndex = index;
+            _openInvitationInbox = false;
 
             if (index != 2) {
               _pendingChatConversationId = null;
@@ -224,10 +237,10 @@ class _AppBottomNavigationBarState
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(
-                  icon,
-                  color: Colors.black,
-                  size: 22,
+                Badge(
+                  isLabelVisible: index == 1 && _invitationCount > 0,
+                  label: Text('$_invitationCount'),
+                  child: Icon(icon, color: Colors.black, size: 22),
                 ),
                 const SizedBox(height: 1),
                 Text(
@@ -248,14 +261,43 @@ class _AppBottomNavigationBarState
     );
   }
 
-  Future<void> _loadStoredTokens() async {
-    final accessToken = await _storage.read(
-      key: 'access_token',
-    );
+  Future<void> _checkInvitations() async {
+    if (_checkingInvitations || !mounted) return;
+    _checkingInvitations = true;
+    MatchmakingApi? api;
+    try {
+      await _loadStoredTokens();
+      api = MatchmakingApi(widget.apiBaseUrl, _accessToken);
+      final ids = await api.pendingInvitationIds();
+      if (!mounted) return;
+      setState(() => _invitationCount = ids.length);
+      if (!_hasInitialisedInvitations) {
+        _knownInvitationIds.addAll(ids);
+        _hasInitialisedInvitations = true;
+        return;
+      }
+      for (final id in ids.where((id) => !_knownInvitationIds.contains(id))) {
+        if (!mounted) return;
+        await notificationService.showNotification(
+          id: notificationService.notificationIdFromText('invitation:$id'),
+          title: 'New study invitation',
+          body: 'A student has invited you to connect. Tap to respond.',
+          payload: notificationService.invitationPayload(id),
+        );
+        _knownInvitationIds.add(id);
+      }
+    } catch (_) {
+      // Preserve the last successful badge during network/session failures.
+    } finally {
+      api?.close();
+      _checkingInvitations = false;
+    }
+  }
 
-    final refreshToken = await _storage.read(
-      key: 'refresh_token',
-    );
+  Future<void> _loadStoredTokens() async {
+    final accessToken = await _storage.read(key: 'access_token');
+
+    final refreshToken = await _storage.read(key: 'refresh_token');
 
     if (accessToken == null || refreshToken == null) {
       return;
@@ -293,15 +335,15 @@ class _AppBottomNavigationBarState
         currentMessageIds.add(messageId);
 
         if (_hasInitialisedChatTracking &&
-          !_knownChatMessageIds.contains(messageId) &&
-          _chatApi.currentUserId != null &&
-          senderId != _chatApi.currentUserId) {
-          final senderName = (
-            conversation['student_name'] ??
-            conversation['other_user_name'] ??
-            conversation['name'] ??
-            'Student'
-          ).toString();
+            !_knownChatMessageIds.contains(messageId) &&
+            _chatApi.currentUserId != null &&
+            senderId != _chatApi.currentUserId) {
+          final senderName =
+              (conversation['student_name'] ??
+                      conversation['other_user_name'] ??
+                      conversation['name'] ??
+                      'Student')
+                  .toString();
 
           if (_activeChatConversationId != conversationId) {
             messagesToNotify.add({
@@ -331,9 +373,7 @@ class _AppBottomNavigationBarState
           ),
           title: 'New message from ${message['senderName']}',
           body: message['messageText']!,
-          payload: notificationService.chatPayload(
-            message['conversationId']!,
-          ),
+          payload: notificationService.chatPayload(message['conversationId']!),
         );
       }
     } on AuthExpiredException {
@@ -365,8 +405,11 @@ class _AppBottomNavigationBarState
         );
 
       case 1:
-        return const Center(
-          child: Text('Matchmaking Page'),
+        return MatchmakingPage(
+          key: ValueKey('match-$_matchPageVersion'),
+          openInvitationsOnLaunch: _openInvitationInbox,
+          apiBaseUrl: widget.apiBaseUrl,
+          accessToken: _accessToken,
         );
 
       case 2:
@@ -400,9 +443,7 @@ class _AppBottomNavigationBarState
         );
 
       default:
-        return const Center(
-          child: Text('Page not found'),
-        );
+        return const Center(child: Text('Page not found'));
     }
   }
 }
