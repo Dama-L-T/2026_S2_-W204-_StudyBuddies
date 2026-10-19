@@ -39,7 +39,12 @@ class ReportMessageRequest(BaseModel):
 
 @router.get("/conversations")
 def get_conversations(user_id: str = Depends(get_current_user_id)):
-    return list_conversations(str(user_id))
+    conversations = list_conversations(str(user_id))
+
+    return {
+        "current_user_id": str(user_id),
+        "conversations": conversations,
+    }
 
 
 @router.get("/conversations/{conversation_id}/messages")

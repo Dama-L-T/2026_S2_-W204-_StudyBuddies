@@ -13,6 +13,7 @@ class ChatPage extends StatefulWidget {
   final String? accessToken;
   final String? refreshToken;
   final String? initialConversationId;
+  final ValueChanged<String?>? onActiveConversationChanged;
 
   const ChatPage({
     super.key,
@@ -20,6 +21,7 @@ class ChatPage extends StatefulWidget {
     required this.accessToken,
     required this.refreshToken,
     this.initialConversationId,
+    this.onActiveConversationChanged,
   });
 
   @override
@@ -184,12 +186,17 @@ class _ChatPageState extends State<ChatPage> {
   Future<void> _openConversation(
     Map<String, dynamic> conversation,
   ) async {
-    if (_value(conversation['id']).isEmpty) {
+    final conversationId = _value(conversation['id']);
+
+    if (conversationId.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Invalid conversation.')),
       );
       return;
     }
+
+    // Tell the bottom navigation bar which conversation is open.
+    widget.onActiveConversationChanged?.call(conversationId);
 
     await Navigator.push(
       context,
@@ -200,6 +207,9 @@ class _ChatPageState extends State<ChatPage> {
         ),
       ),
     );
+
+    // Clear the active conversation when returning to the chat list.
+    widget.onActiveConversationChanged?.call(null);
 
     if (mounted) {
       await _loadConversations();

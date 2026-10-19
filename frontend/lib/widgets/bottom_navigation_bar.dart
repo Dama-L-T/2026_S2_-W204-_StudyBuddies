@@ -39,6 +39,7 @@ class _AppBottomNavigationBarState
   int _schedulePageVersion = 0;
   NotificationTarget? _scheduleNotificationTarget;
   String? _pendingChatConversationId;
+  String? _activeChatConversationId;
   late String _accessToken;
   late String _refreshToken;
   late ChatApiClient _chatApi;
@@ -292,7 +293,9 @@ class _AppBottomNavigationBarState
         currentMessageIds.add(messageId);
 
         if (_hasInitialisedChatTracking &&
-            !_knownChatMessageIds.contains(messageId)) {
+          !_knownChatMessageIds.contains(messageId) &&
+          _chatApi.currentUserId != null &&
+          senderId != _chatApi.currentUserId) {
           final senderName = (
             conversation['student_name'] ??
             conversation['other_user_name'] ??
@@ -300,12 +303,14 @@ class _AppBottomNavigationBarState
             'Student'
           ).toString();
 
-          messagesToNotify.add({
-            'conversationId': conversationId,
-            'messageId': messageId,
-            'senderName': senderName,
-            'messageText': messageText,
-          });
+          if (_activeChatConversationId != conversationId) {
+            messagesToNotify.add({
+              'conversationId': conversationId,
+              'messageId': messageId,
+              'senderName': senderName,
+              'messageText': messageText,
+            });
+          }
         }
       }
 
@@ -370,6 +375,9 @@ class _AppBottomNavigationBarState
           accessToken: _accessToken,
           refreshToken: _refreshToken,
           initialConversationId: _pendingChatConversationId,
+          onActiveConversationChanged: (conversationId) {
+            _activeChatConversationId = conversationId;
+          },
         );
 
       case 3:
