@@ -96,10 +96,75 @@ class ChatApiClient {
     );
   }
 
+  Future<void> reportMessage(
+    String conversationId,
+    String messageId,
+    String reason,
+  ) async {
+    await _request(
+      'POST',
+      '/chat/conversations/$conversationId/messages/$messageId/report',
+      body: {'reason': reason},
+    );
+  }
+
+  Future<void> unreportMessage(
+    String conversationId,
+    String messageId,
+  ) async {
+    await _request(
+      'DELETE',
+      '/chat/conversations/$conversationId/messages/$messageId/report',
+    );
+  }
+
   Future<void> markConversationRead(String conversationId) async {
     await _request(
       'POST',
       '/chat/conversations/$conversationId/read',
+    );
+  }
+  
+  Future<Map<String, dynamic>> getBlockStatus(
+    String conversationId,
+  ) async {
+    final result = await _request(
+      'GET',
+      '/chat/conversations/$conversationId/block-status',
+    );
+
+    if (result is Map) {
+      return Map<String, dynamic>.from(result);
+    }
+
+    return {};
+  }
+
+  Future<void> blockUser(String conversationId) async {
+    await _request(
+      'POST',
+      '/chat/conversations/$conversationId/block',
+    );
+  }
+
+  Future<void> unblockUser(String conversationId) async {
+    await _request(
+      'DELETE',
+      '/chat/conversations/$conversationId/block',
+    );
+  }
+
+  Future<void> unblockUserById(String blockedUserId) async {
+    await _request(
+      'DELETE',
+      '/chat/blocked-users/$blockedUserId',
+    );
+  }
+
+  Future<void> hideConversation(String conversationId) async {
+    await _request(
+      'POST',
+      '/chat/conversations/$conversationId/hide',
     );
   }
 
@@ -309,5 +374,37 @@ class ChatApiClient {
     }
 
     return 'Request failed (${response.statusCode}).';
+  }
+
+  Future<Map<String, dynamic>> getLoginOtpSetting() async {
+    final result = await _request('GET', '/auth/login-otp-setting');
+    return Map<String, dynamic>.from(result as Map);
+  }
+
+  Future<Map<String, dynamic>> updateLoginOtpSetting(
+    bool enabled,
+  ) async {
+    final result = await _request(
+      'PUT',
+      '/auth/login-otp-setting',
+      body: {'enabled': enabled},
+    );
+
+    return Map<String, dynamic>.from(result as Map);
+  }
+
+  Future<dynamic> getBlockedUsers() {
+    return _request('GET', '/chat/blocked-users');
+  }
+
+  Future<dynamic> getHiddenConversations() {
+    return _request('GET', '/chat/hidden-conversations');
+  }
+
+  Future<void> restoreHiddenConversation(String conversationId) async {
+    await _request(
+      'DELETE',
+      '/chat/conversations/$conversationId/hide',
+    );
   }
 }
