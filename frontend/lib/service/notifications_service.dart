@@ -5,7 +5,7 @@ import 'package:timezone/timezone.dart' as timezone;
 
 final notificationService = LocalNotificationService();
 
-enum NotificationTargetType { assignment, event }
+enum NotificationTargetType { assignment, event, chat }
 
 class NotificationTarget {
   const NotificationTarget({required this.type, required this.id});
@@ -178,12 +178,16 @@ class LocalNotificationService {
     return 'event:$eventId';
   }
 
+  String chatPayload(String conversationId) {
+    return 'chat:$conversationId';
+  }
+
   NotificationDetails _notificationDetails() {
     return const NotificationDetails(
       android: AndroidNotificationDetails(
         'study_buddies_notifications',
         'Study Buddies Notifications',
-        channelDescription: 'Notifications for assignments and events',
+        channelDescription: 'Notifications for messages, assignments and events',
         importance: Importance.high,
         priority: Priority.high,
         playSound: true,

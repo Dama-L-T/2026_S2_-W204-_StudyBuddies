@@ -18,6 +18,7 @@ from app.services.chat_service import (
     unblock_user_by_id,
     report_message,
     unreport_message,
+    update_last_seen,
 )
 from app.services.auth_dependency import get_current_user_id
 
@@ -38,7 +39,12 @@ class ReportMessageRequest(BaseModel):
 
 @router.get("/conversations")
 def get_conversations(user_id: str = Depends(get_current_user_id)):
-    return list_conversations(str(user_id))
+    conversations = list_conversations(str(user_id))
+
+    return {
+        "current_user_id": str(user_id),
+        "conversations": conversations,
+    }
 
 
 @router.get("/conversations/{conversation_id}/messages")
@@ -217,3 +223,8 @@ def remove_message_report(
         message_id=message_id,
         user_id=str(user_id),
     )
+
+
+@router.post("/presence/heartbeat")
+def presence_heartbeat(user_id: str = Depends(get_current_user_id)):
+    return update_last_seen(str(user_id))
