@@ -154,6 +154,13 @@ class ChatApiClient {
     );
   }
 
+  Future<void> unblockUserById(String blockedUserId) async {
+    await _request(
+      'DELETE',
+      '/chat/blocked-users/$blockedUserId',
+    );
+  }
+
   Future<void> hideConversation(String conversationId) async {
     await _request(
       'POST',
