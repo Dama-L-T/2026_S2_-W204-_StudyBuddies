@@ -277,6 +277,7 @@ class _AppBottomNavigationBarState
         return SettingsPage(
           apiBaseUrl: widget.apiBaseUrl,
           accessToken: _accessToken,
+          refreshToken: _refreshToken,
         );
 
       default:

@@ -6,6 +6,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import 'chat_conversation_screen.dart';
 import 'chat_send_receive.dart';
+import '../widgets/app_bar.dart';
 
 class ChatPage extends StatefulWidget {
   final String apiBaseUrl;
@@ -158,18 +159,7 @@ class _ChatPageState extends State<ChatPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.white,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        surfaceTintColor: Colors.white,
-        elevation: 0,
-        title: const Text(
-          'Chats',
-          style: TextStyle(
-            color: Colors.black,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-      ),
+      appBar: const AppBarWidget(title: 'Chat'),
       body: RefreshIndicator(
         onRefresh: () => _loadConversations(),
         child: _buildBody(),
@@ -261,6 +251,11 @@ class _ChatPageState extends State<ChatPage> {
 
         final unread = _unreadCount(conversation['unread_count']);
 
+        final isBlocked =
+            conversation['is_blocked'] == true ||
+            conversation['is_blocked_by_me'] == true ||
+            conversation['has_blocked_me'] == true;
+
         return ListTile(
           contentPadding: const EdgeInsets.symmetric(
             horizontal: 16,
@@ -290,56 +285,65 @@ class _ChatPageState extends State<ChatPage> {
           subtitle: Padding(
             padding: const EdgeInsets.only(top: 5),
             child: Text(
-              lastMessage,
+              isBlocked ? 'Blocked' : lastMessage,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
-                color: unread > 0 ? Colors.black87 : Colors.grey.shade600,
-                fontWeight:
-                    unread > 0 ? FontWeight.w600 : FontWeight.normal,
+                color: isBlocked
+                    ? Colors.red.shade700
+                    : (unread > 0 ? Colors.black87 : Colors.grey.shade600),
+                fontWeight: isBlocked || unread > 0
+                    ? FontWeight.w600
+                    : FontWeight.normal,
               ),
             ),
           ),
-          trailing: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              if (time.isNotEmpty)
-                Text(
-                  time,
-                  style: const TextStyle(
-                    fontSize: 11,
-                    color: Colors.grey,
+          trailing: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 70),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                if (time.isNotEmpty)
+                  Text(
+                    time,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: Colors.grey,
+                    ),
                   ),
-                ),
-              if (unread > 0) ...[
-                const SizedBox(height: 6),
-                Container(
-                  constraints: const BoxConstraints(
-                    minWidth: 21,
-                    minHeight: 21,
-                  ),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 6,
-                    vertical: 3,
-                  ),
-                  decoration: const BoxDecoration(
-                    color: Colors.blue,
-                    shape: BoxShape.circle,
-                  ),
-                  child: Center(
-                    child: Text(
-                      unread > 99 ? '99+' : '$unread',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 11,
-                        fontWeight: FontWeight.bold,
+                if (unread > 0) ...[
+                  const SizedBox(height: 6),
+                  Container(
+                    constraints: const BoxConstraints(
+                      minWidth: 21,
+                      minHeight: 21,
+                    ),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 3,
+                    ),
+                    decoration: const BoxDecoration(
+                      color: Colors.blue,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Center(
+                      child: Text(
+                        unread > 99 ? '99+' : '$unread',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ),
                   ),
-                ),
+                ],
               ],
-            ],
+            ),
           ),
           onTap: () => _openConversation(conversation),
         );
