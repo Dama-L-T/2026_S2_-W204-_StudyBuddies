@@ -12,12 +12,14 @@ class ChatPage extends StatefulWidget {
   final String apiBaseUrl;
   final String? accessToken;
   final String? refreshToken;
+  final String? initialConversationId;
 
   const ChatPage({
     super.key,
     required this.apiBaseUrl,
     required this.accessToken,
     required this.refreshToken,
+    this.initialConversationId,
   });
 
   @override
@@ -34,6 +36,7 @@ class _ChatPageState extends State<ChatPage> {
   List<Map<String, dynamic>> _conversations = [];
   bool _isLoading = true;
   bool _hasError = false;
+  bool _hasHandledInitialConversation = false;
 
   @override
   void initState() {
@@ -76,6 +79,35 @@ class _ChatPageState extends State<ChatPage> {
     }
   }
 
+  Future<void> _openInitialConversation(
+    List<Map<String, dynamic>> conversations,
+  ) async {
+    final conversationId = widget.initialConversationId;
+
+    if (_hasHandledInitialConversation ||
+        conversationId == null ||
+        conversationId.isEmpty) {
+      return;
+    }
+
+    final conversationIndex = conversations.indexWhere(
+      (conversation) =>
+          conversation['id']?.toString() == conversationId,
+    );
+
+    if (conversationIndex == -1) {
+      return;
+    }
+
+    _hasHandledInitialConversation = true;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+
+      _openConversation(conversations[conversationIndex]);
+    });
+  }
+
   Future<void> _loadConversations({bool silent = false}) async {
     if (!silent && mounted) {
       setState(() {
@@ -94,6 +126,8 @@ class _ChatPageState extends State<ChatPage> {
         _isLoading = false;
         _hasError = false;
       });
+
+      await _openInitialConversation(conversations);
     } on AuthExpiredException {
       if (!mounted) return;
 

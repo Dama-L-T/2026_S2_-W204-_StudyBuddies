@@ -10,6 +10,7 @@ import '../profile/profile.dart';
 import '../service/notifications_service.dart';
 import '../service/reminder_sync_service.dart';
 import '../chat/chat_page.dart';
+import '../chat/chat_send_receive.dart';
 
 class AppBottomNavigationBar extends StatefulWidget {
   const AppBottomNavigationBar({
@@ -37,8 +38,15 @@ class _AppBottomNavigationBarState
   int currentIndex = 0;
   int _schedulePageVersion = 0;
   NotificationTarget? _scheduleNotificationTarget;
+  String? _pendingChatConversationId;
   late String _accessToken;
   late String _refreshToken;
+  late ChatApiClient _chatApi;
+  Timer? _chatNotificationTimer;
+
+  final Set<String> _knownChatMessageIds = {};
+  bool _hasInitialisedChatTracking = false;
+  bool _isCheckingChatNotifications = false;
 
   @override
   void initState() {
@@ -46,23 +54,39 @@ class _AppBottomNavigationBarState
 
     _accessToken = widget.accessToken;
     _refreshToken = widget.refreshToken;
+
+    _chatApi = ChatApiClient(
+      apiBaseUrl: widget.apiBaseUrl,
+      accessToken: _accessToken,
+      refreshToken: _refreshToken,
+      storage: _storage,
+    );
+
     _applyNotificationPayload(widget.initialNotificationPayload);
     notificationService.onNotificationTapped = _handleNotificationPayload;
+
     unawaited(_syncReminderNotifications());
+    unawaited(_checkChatNotifications());
+
+    _chatNotificationTimer = Timer.periodic(
+      const Duration(seconds: 3),
+      (_) => _checkChatNotifications(),
+    );
   }
 
   @override
   void dispose() {
+    _chatNotificationTimer?.cancel();
+
     if (notificationService.onNotificationTapped == _handleNotificationPayload) {
       notificationService.onNotificationTapped = null;
     }
+
     super.dispose();
   }
 
   void _handleNotificationPayload(String? payload) {
-    if (!mounted) {
-      return;
-    }
+    if (!mounted) return;
 
     setState(() {
       _applyNotificationPayload(payload);
@@ -71,11 +95,16 @@ class _AppBottomNavigationBarState
 
   void _applyNotificationPayload(String? payload) {
     final target = NotificationTarget.parse(payload);
-    if (target == null) {
+    if (target == null) return;
+
+    if (target.type == NotificationTargetType.chat) {
+      currentIndex = 2;
+      _pendingChatConversationId = target.id;
       return;
     }
 
     currentIndex = 0;
+    _pendingChatConversationId = null;
     _scheduleNotificationTarget = target;
     _schedulePageVersion++;
   }
@@ -171,6 +200,10 @@ class _AppBottomNavigationBarState
           setState(() {
             currentIndex = index;
 
+            if (index != 2) {
+              _pendingChatConversationId = null;
+            }
+
             if (index == 0) {
               _schedulePageVersion++;
             }
@@ -231,6 +264,83 @@ class _AppBottomNavigationBarState
     _refreshToken = refreshToken;
   }
 
+  Future<void> _checkChatNotifications() async {
+    if (_isCheckingChatNotifications || !mounted) return;
+
+    _isCheckingChatNotifications = true;
+
+    try {
+      final conversations = await _chatApi.getConversations();
+      final currentMessageIds = <String>{};
+      final messagesToNotify = <Map<String, String>>[];
+
+      for (final conversation in conversations) {
+        final conversationId = conversation['id']?.toString();
+        final messageId = conversation['last_message_id']?.toString();
+        final senderId = conversation['last_message_sender_id']?.toString();
+        final messageText = conversation['last_message']?.toString() ?? '';
+
+        if (conversationId == null ||
+            conversationId.isEmpty ||
+            messageId == null ||
+            messageId.isEmpty ||
+            senderId == null ||
+            messageText.trim().isEmpty) {
+          continue;
+        }
+
+        currentMessageIds.add(messageId);
+
+        if (_hasInitialisedChatTracking &&
+            !_knownChatMessageIds.contains(messageId)) {
+          final senderName = (
+            conversation['student_name'] ??
+            conversation['other_user_name'] ??
+            conversation['name'] ??
+            'Student'
+          ).toString();
+
+          messagesToNotify.add({
+            'conversationId': conversationId,
+            'messageId': messageId,
+            'senderName': senderName,
+            'messageText': messageText,
+          });
+        }
+      }
+
+      if (!_hasInitialisedChatTracking) {
+        _knownChatMessageIds.addAll(currentMessageIds);
+        _hasInitialisedChatTracking = true;
+        return;
+      }
+
+      _knownChatMessageIds.addAll(currentMessageIds);
+
+      for (final message in messagesToNotify) {
+        if (!mounted) return;
+
+        await notificationService.showNotification(
+          id: notificationService.notificationIdFromText(
+            'chat:${message['conversationId']}:${message['messageId']}',
+          ),
+          title: 'New message from ${message['senderName']}',
+          body: message['messageText']!,
+          payload: notificationService.chatPayload(
+            message['conversationId']!,
+          ),
+        );
+      }
+    } on AuthExpiredException {
+      // The session has expired; stop this check and let the
+      // app's existing authentication handling manage the session.
+    } catch (e) {
+      debugPrint('Chat notification check failed: $e');
+    } finally {
+      _isCheckingChatNotifications = false;
+    }
+  }
+
   Future<void> _syncReminderNotifications() async {
     await reminderSyncService.syncUpcomingReminders(
       apiBaseUrl: widget.apiBaseUrl,
@@ -259,6 +369,7 @@ class _AppBottomNavigationBarState
           apiBaseUrl: widget.apiBaseUrl,
           accessToken: _accessToken,
           refreshToken: _refreshToken,
+          initialConversationId: _pendingChatConversationId,
         );
 
       case 3:

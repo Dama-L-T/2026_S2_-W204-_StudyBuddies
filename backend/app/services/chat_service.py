@@ -320,7 +320,7 @@ def list_conversations(user_id: str) -> list[dict]:
 
         latest_result = (
             client.table("chat_messages")
-            .select("content, created_at")
+            .select("id, content, sender_id, created_at")
             .eq("conversation_id", conversation_id)
             .order("created_at", desc=True)
             .limit(1)
@@ -346,6 +346,8 @@ def list_conversations(user_id: str) -> list[dict]:
             "id": conversation_id,
             "student_name": _profile_name(client, other_id),
             "last_message": latest_message["content"] if latest_message else "",
+            "last_message_id": str(latest_message["id"]) if latest_message else None,
+            "last_message_sender_id": str(latest_message["sender_id"]) if latest_message else None,
             "last_message_at": latest_message["created_at"] if latest_message else None,
             "unread_count": len(unread_result.data or []),
             "is_blocked_by_me": blocked_by_me,
