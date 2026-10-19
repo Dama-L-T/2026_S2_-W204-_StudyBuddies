@@ -1,8 +1,7 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+import '../chat/chat_send_receive.dart';
 import '../widgets/app_bar.dart';
 
 class SettingsPage extends StatefulWidget {
@@ -10,16 +9,21 @@ class SettingsPage extends StatefulWidget {
     super.key,
     required this.apiBaseUrl,
     required this.accessToken,
+    required this.refreshToken,
   });
 
   final String apiBaseUrl;
   final String accessToken;
+  final String refreshToken;
 
   @override
   State<SettingsPage> createState() => _SettingsPageState();
 }
 
 class _SettingsPageState extends State<SettingsPage> {
+  final FlutterSecureStorage _storage = const FlutterSecureStorage();
+  late final ChatApiClient _api;
+
   bool loginOtpEnabled = false;
   bool isLoading = true;
   bool isUpdating = false;
@@ -27,40 +31,27 @@ class _SettingsPageState extends State<SettingsPage> {
   @override
   void initState() {
     super.initState();
+
+    _api = ChatApiClient(
+      apiBaseUrl: widget.apiBaseUrl,
+      accessToken: widget.accessToken,
+      refreshToken: widget.refreshToken,
+      storage: _storage,
+    );
+
     _loadLoginOtpSetting();
   }
 
   Future<void> _loadLoginOtpSetting() async {
     try {
-      final response = await http.get(
-        Uri.parse(
-          '${widget.apiBaseUrl}/auth/login-otp-setting',
-        ),
-        headers: {
-          'Authorization': 'Bearer ${widget.accessToken}',
-          'Content-Type': 'application/json',
-        },
-      );
+      final data = await _api.getLoginOtpSetting();
 
       if (!mounted) return;
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-
-        setState(() {
-          loginOtpEnabled = data['enabled'] == true;
-          isLoading = false;
-        });
-      } else {
-        setState(() {
-          isLoading = false;
-        });
-
-        debugPrint(
-          'Failed to load OTP setting: '
-          '${response.statusCode} ${response.body}',
-        );
-      }
+      setState(() {
+        loginOtpEnabled = data['enabled'] == true;
+        isLoading = false;
+      });
     } catch (error) {
       if (!mounted) return;
 
@@ -68,9 +59,7 @@ class _SettingsPageState extends State<SettingsPage> {
         isLoading = false;
       });
 
-      debugPrint(
-        'Failed to load OTP setting: $error',
-      );
+      debugPrint('Failed to load OTP setting: $error');
     }
   }
 
@@ -82,38 +71,14 @@ class _SettingsPageState extends State<SettingsPage> {
     });
 
     try {
-      final response = await http.put(
-        Uri.parse(
-          '${widget.apiBaseUrl}/auth/login-otp-setting',
-        ),
-        headers: {
-          'Authorization': 'Bearer ${widget.accessToken}',
-          'Content-Type': 'application/json',
-        },
-        body: jsonEncode({
-          'enabled': value,
-        }),
-      );
+      final data = await _api.updateLoginOtpSetting(value);
 
       if (!mounted) return;
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-
-        setState(() {
-          loginOtpEnabled = data['enabled'] == true;
-          isUpdating = false;
-        });
-      } else {
-        setState(() {
-          isUpdating = false;
-        });
-
-        debugPrint(
-          'Failed to update OTP setting: '
-          '${response.statusCode} ${response.body}',
-        );
-      }
+      setState(() {
+        loginOtpEnabled = data['enabled'] == true;
+        isUpdating = false;
+      });
     } catch (error) {
       if (!mounted) return;
 
@@ -121,9 +86,7 @@ class _SettingsPageState extends State<SettingsPage> {
         isUpdating = false;
       });
 
-      debugPrint(
-        'Failed to update OTP setting: $error',
-      );
+      debugPrint('Failed to update OTP setting: $error');
     }
   }
 
@@ -183,10 +146,9 @@ class _SettingsPageState extends State<SettingsPage> {
                       context,
                       MaterialPageRoute(
                         builder: (_) => ChatActionListPage(
-                          apiBaseUrl: widget.apiBaseUrl,
-                          accessToken: widget.accessToken,
+                          api: _api,
                           type: ChatActionType.blocked,
-                        ),
+                        )
                       ),
                     ),
                   ),
@@ -215,8 +177,7 @@ class _SettingsPageState extends State<SettingsPage> {
                       context,
                       MaterialPageRoute(
                         builder: (_) => ChatActionListPage(
-                          apiBaseUrl: widget.apiBaseUrl,
-                          accessToken: widget.accessToken,
+                          api: _api,
                           type: ChatActionType.hidden,
                         ),
                       ),
@@ -291,14 +252,12 @@ class _SettingsPageState extends State<SettingsPage> {
 enum ChatActionType { blocked, hidden }
 
 class ChatActionListPage extends StatefulWidget {
-  final String apiBaseUrl;
-  final String accessToken;
+  final ChatApiClient api;
   final ChatActionType type;
 
   const ChatActionListPage({
     super.key,
-    required this.apiBaseUrl,
-    required this.accessToken,
+    required this.api,
     required this.type,
   });
 
@@ -329,29 +288,10 @@ class _ChatActionListPageState extends State<ChatActionListPage> {
     });
 
     try {
-      final endpoint = isBlocked
-          ? '/chat/blocked-users'
-          : '/chat/hidden-conversations';
+      final decoded = isBlocked
+          ? await widget.api.getBlockedUsers()
+          : await widget.api.getHiddenConversations();
 
-      final response = await http.get(
-        Uri.parse('${widget.apiBaseUrl}$endpoint'),
-        headers: {
-          'Authorization': 'Bearer ${widget.accessToken}',
-          'Accept': 'application/json',
-        },
-      );
-
-      if (response.statusCode != 200) {
-        debugPrint(
-          'Failed to load ${isBlocked ? "blocked users" : "hidden conversations"}: '
-          '${response.statusCode} ${response.body}',
-        );
-        throw Exception(
-          'Request failed (${response.statusCode}): ${response.body}',
-        );
-      }
-
-      final decoded = jsonDecode(response.body);
       dynamic list = decoded;
 
       if (decoded is Map) {
@@ -373,7 +313,7 @@ class _ChatActionListPageState extends State<ChatActionListPage> {
 
       if (!mounted) return;
 
-      final parsedItems = (list as List)
+      final parsedItems = list
           .whereType<Map>()
           .map((item) => Map<String, dynamic>.from(item))
           .toList();
@@ -384,6 +324,7 @@ class _ChatActionListPageState extends State<ChatActionListPage> {
       });
     } catch (e) {
       debugPrint('Chat settings list error: $e');
+
       if (!mounted) return;
 
       setState(() {
@@ -403,29 +344,11 @@ class _ChatActionListPageState extends State<ChatActionListPage> {
       return;
     }
 
-    final endpoint = isBlocked
-        ? '/chat/blocked-users/$id'
-        : '/chat/conversations/$id/hide';
-
     try {
-      final response = isBlocked
-          ? await http.delete(
-              Uri.parse('${widget.apiBaseUrl}$endpoint'),
-              headers: {
-                'Authorization': 'Bearer ${widget.accessToken}',
-                'Accept': 'application/json',
-              },
-            )
-          : await http.delete(
-              Uri.parse('${widget.apiBaseUrl}$endpoint'),
-              headers: {
-                'Authorization': 'Bearer ${widget.accessToken}',
-                'Accept': 'application/json',
-              },
-            );
-
-      if (response.statusCode < 200 || response.statusCode >= 300) {
-        throw Exception('Request failed (${response.statusCode})');
+      if (isBlocked) {
+        await widget.api.unblockUser(id.toString());
+      } else {
+        await widget.api.restoreHiddenConversation(id.toString());
       }
 
       if (!mounted) return;
@@ -442,7 +365,9 @@ class _ChatActionListPageState extends State<ChatActionListPage> {
         });
       });
 
-      _showMessage(isBlocked ? 'Student unblocked.' : 'Conversation restored.');
+      _showMessage(
+        isBlocked ? 'Student unblocked.' : 'Conversation restored.',
+      );
     } catch (e) {
       if (mounted) {
         _showMessage('Unable to update: $e');

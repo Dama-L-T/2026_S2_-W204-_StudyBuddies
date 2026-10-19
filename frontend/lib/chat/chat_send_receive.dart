@@ -368,4 +368,36 @@ class ChatApiClient {
 
     return 'Request failed (${response.statusCode}).';
   }
+
+  Future<Map<String, dynamic>> getLoginOtpSetting() async {
+    final result = await _request('GET', '/auth/login-otp-setting');
+    return Map<String, dynamic>.from(result as Map);
+  }
+
+  Future<Map<String, dynamic>> updateLoginOtpSetting(
+    bool enabled,
+  ) async {
+    final result = await _request(
+      'PUT',
+      '/auth/login-otp-setting',
+      body: {'enabled': enabled},
+    );
+
+    return Map<String, dynamic>.from(result as Map);
+  }
+
+  Future<dynamic> getBlockedUsers() {
+    return _request('GET', '/chat/blocked-users');
+  }
+
+  Future<dynamic> getHiddenConversations() {
+    return _request('GET', '/chat/hidden-conversations');
+  }
+
+  Future<void> restoreHiddenConversation(String conversationId) async {
+    await _request(
+      'DELETE',
+      '/chat/conversations/$conversationId/hide',
+    );
+  }
 }
