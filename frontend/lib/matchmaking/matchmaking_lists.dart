@@ -21,7 +21,8 @@ class _SavedProfilesPageState extends State<_SavedProfilesPage> {
   List<StudentProfile> _profiles = [];
   bool _loading = true;
   bool _acting = false;
-  final _sentInvitations = <String>{};
+  Map<String, String> _invitationStatuses = {};
+  bool _statusesLoaded = false;
   String? _error;
   bool get _uninterested => widget.status == 'uninterested';
 
@@ -32,13 +33,25 @@ class _SavedProfilesPageState extends State<_SavedProfilesPage> {
   }
 
   Future<void> _load() async {
+    if (_acting || (_loading && _statusesLoaded)) return;
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
-      final profiles = await widget.api.savedProfiles(widget.status);
-      if (mounted) setState(() => _profiles = profiles);
+      final result = await Future.wait<dynamic>([
+        widget.api.savedProfiles(widget.status),
+        if (!_uninterested) widget.api.invitationStatuses(),
+      ]);
+      if (mounted) {
+        setState(() {
+          _profiles = result[0] as List<StudentProfile>;
+          _invitationStatuses = _uninterested
+              ? {}
+              : result[1] as Map<String, String>;
+          _statusesLoaded = true;
+        });
+      }
     } catch (error) {
       if (mounted) {
         setState(
@@ -112,8 +125,13 @@ class _SavedProfilesPageState extends State<_SavedProfilesPage> {
   }
 
   Future<void> _sendInvitation(StudentProfile student) async {
-    if (_acting || _loading || _sentInvitations.contains(student.userId))
+    if (_acting ||
+        _loading ||
+        !_statusesLoaded ||
+        _error != null ||
+        _invitationStatuses.containsKey(student.userId)) {
       return;
+    }
     setState(() {
       _acting = true;
       _error = null;
@@ -121,7 +139,7 @@ class _SavedProfilesPageState extends State<_SavedProfilesPage> {
     try {
       final message = await widget.api.sendInvitation(student.userId);
       if (!mounted) return;
-      setState(() => _sentInvitations.add(student.userId));
+      setState(() => _invitationStatuses[student.userId] = 'outgoing_pending');
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(message)));
@@ -131,10 +149,26 @@ class _SavedProfilesPageState extends State<_SavedProfilesPage> {
           () => _error = error.toString().replaceFirst('Exception: ', ''),
         );
       }
+      try {
+        final statuses = await widget.api.invitationStatuses();
+        if (mounted) setState(() => _invitationStatuses = statuses);
+      } catch (_) {
+        // Keep send disabled until a successful refresh.
+        if (mounted) setState(() => _statusesLoaded = false);
+      }
     } finally {
       if (mounted) setState(() => _acting = false);
     }
   }
+
+  String _invitationLabel(String studentId) =>
+      switch (_invitationStatuses[studentId]) {
+        'outgoing_pending' => 'Pending invite',
+        'incoming_pending' => 'Invitation received',
+        'accepted' => 'Matched',
+        'declined' => 'Invite declined',
+        _ => 'Send invite',
+      };
 
   Future<void> _view(StudentProfile student) async {
     setState(() {
@@ -172,93 +206,101 @@ class _SavedProfilesPageState extends State<_SavedProfilesPage> {
       title: _uninterested ? 'Uninterested' : 'Interested',
       showBackButton: true,
     ),
-    body: ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        if (_loading || _acting) const LinearProgressIndicator(),
-        if (_error != null) ...[
-          Text(
-            _error!,
-            style: TextStyle(color: Theme.of(context).colorScheme.error),
-          ),
-          TextButton(
-            onPressed: _loading || _acting ? null : _load,
-            child: const Text('Retry'),
-          ),
-        ],
-        if (!_loading && _error == null && _profiles.isEmpty)
-          Padding(
-            padding: const EdgeInsets.all(24),
-            child: Text(
-              _uninterested
-                  ? 'No uninterested students saved.'
-                  : 'No interested students saved.',
-              textAlign: TextAlign.center,
+    body: RefreshIndicator(
+      onRefresh: _load,
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(16),
+        children: [
+          if (_loading || _acting) const LinearProgressIndicator(),
+          if (_error != null) ...[
+            Text(
+              _error!,
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
             ),
-          ),
-        for (final student in _profiles)
-          Card(
-            key: ValueKey('saved-${student.userId}'),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                ListTile(
-                  enabled: !_acting,
-                  onTap: _acting ? null : () => _view(student),
-                  leading: CircleAvatar(
-                    backgroundImage: student.imageUrl == null
+            TextButton(
+              onPressed: _loading || _acting ? null : _load,
+              child: const Text('Retry'),
+            ),
+          ],
+          if (!_loading && _error == null && _profiles.isEmpty)
+            Padding(
+              padding: const EdgeInsets.all(24),
+              child: Text(
+                _uninterested
+                    ? 'No uninterested students saved.'
+                    : 'No interested students saved.',
+                textAlign: TextAlign.center,
+              ),
+            ),
+          for (final student in _profiles)
+            Card(
+              key: ValueKey('saved-${student.userId}'),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  ListTile(
+                    enabled: !_acting,
+                    onTap: _acting ? null : () => _view(student),
+                    leading: CircleAvatar(
+                      backgroundImage: student.imageUrl == null
+                          ? null
+                          : NetworkImage(student.imageUrl!),
+                      onBackgroundImageError: student.imageUrl == null
+                          ? null
+                          : (_, _) {},
+                      child: student.imageUrl == null
+                          ? const Icon(Icons.person)
+                          : null,
+                    ),
+                    trailing: IconButton(
+                      key: ValueKey('remove-${student.userId}'),
+                      tooltip: _uninterested
+                          ? 'Remove from Uninterested'
+                          : 'Remove from Interested',
+                      onPressed: _acting
+                          ? null
+                          : () => _confirmRemoval(student),
+                      icon: const Icon(Icons.close),
+                    ),
+                    title: Text(
+                      student.name.isEmpty ? 'Student' : student.name,
+                    ),
+                    subtitle: student.interests.isEmpty
                         ? null
-                        : NetworkImage(student.imageUrl!),
-                    onBackgroundImageError: student.imageUrl == null
-                        ? null
-                        : (_, _) {},
-                    child: student.imageUrl == null
-                        ? const Icon(Icons.person)
-                        : null,
+                        : Text(student.interests),
                   ),
-                  trailing: IconButton(
-                    key: ValueKey('remove-${student.userId}'),
-                    tooltip: _uninterested
-                        ? 'Remove from Uninterested'
-                        : 'Remove from Interested',
-                    onPressed: _acting ? null : () => _confirmRemoval(student),
-                    icon: const Icon(Icons.close),
-                  ),
-                  title: Text(student.name.isEmpty ? 'Student' : student.name),
-                  subtitle: student.interests.isEmpty
-                      ? null
-                      : Text(student.interests),
-                ),
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-                  child: Wrap(
-                    spacing: 12,
-                    children: [
-                      TextButton(
-                        onPressed: _acting ? null : () => _view(student),
-                        child: const Text('View profile'),
-                      ),
-                      if (!_uninterested)
-                        FilledButton(
-                          onPressed:
-                              _acting ||
-                                  _loading ||
-                                  _sentInvitations.contains(student.userId)
-                              ? null
-                              : () => _sendInvitation(student),
-                          child: Text(
-                            _sentInvitations.contains(student.userId)
-                                ? 'Invite sent'
-                                : 'Send invite',
-                          ),
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                    child: Wrap(
+                      spacing: 12,
+                      children: [
+                        TextButton(
+                          onPressed: _acting ? null : () => _view(student),
+                          child: const Text('View profile'),
                         ),
-                    ],
+                        if (!_uninterested)
+                          FilledButton(
+                            onPressed:
+                                _acting ||
+                                    _loading ||
+                                    !_statusesLoaded ||
+                                    _error != null ||
+                                    _invitationStatuses.containsKey(
+                                      student.userId,
+                                    )
+                                ? null
+                                : () => _sendInvitation(student),
+                            child: Text(_invitationLabel(student.userId)),
+                          ),
+                      ],
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-      ],
+        ],
+      ),
     ),
   );
 }

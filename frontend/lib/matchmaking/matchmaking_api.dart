@@ -91,6 +91,11 @@ class MatchmakingApi {
     return List<String>.from(response['ids'] as List);
   }
 
+  Future<Map<String, String>> invitationStatuses() async =>
+      Map<String, String>.from(
+        await request('GET', '/matchmaking/invitations/statuses') as Map,
+      );
+
   Future<int> invitationCount() async {
     final response =
         await request('GET', '/matchmaking/invitations/count') as Map;

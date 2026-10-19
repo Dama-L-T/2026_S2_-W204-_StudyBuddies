@@ -226,3 +226,23 @@ def respond_to_invitation(db, user_id, invitation_id, status):
     if not updated:
         raise InvitationConflict('This invitation changed. Refresh your invitations.')
     return {'id': invitation_id, 'status': status}
+
+
+def invitation_statuses(db, user_id):
+    """Summarize only this student's connections for persistent button states."""
+    connections = rows(db.table('student_matching').select(
+        'id,student_id,target_student_id,status'
+    ).or_(f'student_id.eq.{user_id},target_student_id.eq.{user_id}').order('id'))
+    statuses = {}
+    for connection in connections:
+        outgoing = connection['student_id'] == user_id
+        if not outgoing and connection['target_student_id'] != user_id:
+            continue
+        partner_id = connection['target_student_id'] if outgoing else connection['student_id']
+        status = connection['status']
+        if status == 'pending':
+            status = 'outgoing_pending' if outgoing else 'incoming_pending'
+        if status not in ('outgoing_pending', 'incoming_pending', 'accepted', 'declined'):
+            raise ValueError('Unknown invitation status.')
+        statuses[partner_id] = status
+    return statuses

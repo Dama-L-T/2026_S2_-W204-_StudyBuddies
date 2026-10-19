@@ -100,3 +100,17 @@ reminder synchronization preserves invitation/chat alerts. Detection is app-side
 polling, not background push delivery. No extra SQL is required beyond student_matching.sql.
 Chat creation remains for the chat integration owner; acceptance currently only
 updates student_matching and does not insert chat_conversations.
+
+
+## Persistent invitation button states
+
+Interested loads `GET /matchmaking/invitations/statuses` alongside saved profiles.
+The authenticated endpoint returns outgoing_pending/incoming_pending/accepted/
+declined states keyed by partner ID. Only pairs involving the verified student
+are returned. Existing requests render disabled Pending invite, Invitation
+received, Matched, or Invite declined labels. A fresh Send invite action appears
+only when no connection exists and status loading succeeded. Pull to refresh or
+reopen the page to update statuses. A successful send immediately becomes Pending
+invite. Failed status loads disable sending until retry succeeds. The existing
+backend unique-pair constraint and duplicate handling remain authoritative across
+devices; there is no resend operation or extra SQL migration.
