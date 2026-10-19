@@ -23,7 +23,12 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
 
-  Timer? _pollTimer;
+ Timer? _pollTimer;
+  Timer? _presenceTimer;
+
+  bool _isOnline = false;
+  String? _lastSeenAt;
+  bool _isFetchingPresence = false; 
   List<Map<String, dynamic>> _messages = [];
 
   bool _isLoading = true;
@@ -51,8 +56,13 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
   @override
   void initState() {
     super.initState();
+
+    _isOnline = widget.conversation['is_online'] == true;
+    _lastSeenAt = widget.conversation['last_seen_at']?.toString();
+
     _loadMessages();
     _loadBlockStatus();
+    _loadPresence();
 
     _pollTimer = Timer.periodic(
       const Duration(seconds: 2),
@@ -60,6 +70,11 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
         _loadMessages(silent: true);
         _loadBlockStatus();
       },
+    );
+
+    _presenceTimer = Timer.periodic(
+      const Duration(seconds: 2),
+      (_) => _loadPresence(),
     );
   }
 
@@ -166,6 +181,7 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
   @override
   void dispose() {
     _pollTimer?.cancel();
+    _presenceTimer?.cancel();
     _messageController.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -745,29 +761,67 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
         leading: const BackButton(color: Colors.black),
         title: Row(
           children: [
-            CircleAvatar(
-              backgroundColor: Colors.blue.shade50,
-              child: Text(
-                _studentName.isNotEmpty
-                    ? _studentName[0].toUpperCase()
-                    : 'S',
-                style: TextStyle(
-                  color: Colors.blue.shade700,
-                  fontWeight: FontWeight.bold,
+            Stack(
+              children: [
+                CircleAvatar(
+                  backgroundColor: Colors.blue.shade50,
+                  child: Text(
+                    _studentName.isNotEmpty
+                        ? _studentName[0].toUpperCase()
+                        : 'S',
+                    style: TextStyle(
+                      color: Colors.blue.shade700,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
                 ),
-              ),
+                Positioned(
+                  right: 0,
+                  bottom: 0,
+                  child: Container(
+                    width: 12,
+                    height: 12,
+                    decoration: BoxDecoration(
+                      color: _isOnline ? Colors.green : Colors.grey,
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: Colors.white,
+                        width: 2,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
             const SizedBox(width: 12),
             Expanded(
-              child: Text(
-                _studentName,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  color: Colors.black,
-                  fontSize: 17,
-                  fontWeight: FontWeight.w600,
-                ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    _studentName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.black,
+                      fontSize: 17,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    _isOnline
+                        ? 'Online'
+                        : _formatLastSeen(_lastSeenAt),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: _isOnline ? Colors.green : Colors.grey,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
               ),
             ),
           ],
@@ -1098,5 +1152,62 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
         ),
       ),
     );
+  }
+
+  String _formatLastSeen(dynamic value) {
+    if (value == null) return 'Activity unavailable';
+
+    final lastSeen = DateTime.tryParse(value.toString())?.toLocal();
+    if (lastSeen == null) return 'Activity unavailable';
+
+    final difference = DateTime.now().difference(lastSeen);
+
+    if (difference.inSeconds < 0) return 'Last active just now';
+    if (difference.inMinutes < 1) return 'Last active just now';
+    if (difference.inMinutes < 60) {
+      return 'Last active ${difference.inMinutes}m ago';
+    }
+    if (difference.inHours < 24) {
+      return 'Last active ${difference.inHours}h ago';
+    }
+    if (difference.inDays < 7) {
+      return 'Last active ${difference.inDays}d ago';
+    }
+
+    return 'Last active ${lastSeen.day}/${lastSeen.month}/${lastSeen.year}';
+  }
+
+  Future<void> _loadPresence() async {
+    if (_conversationId.isEmpty || _isFetchingPresence) return;
+
+    _isFetchingPresence = true;
+
+    try {
+      final conversations = await widget.api.getConversations();
+
+      if (!mounted) return;
+
+      final currentConversation = conversations.firstWhere(
+        (item) => item['id']?.toString() == _conversationId,
+        orElse: () => <String, dynamic>{},
+      );
+
+      if (currentConversation.isEmpty) return;
+
+      final isOnline = currentConversation['is_online'] == true;
+      final lastSeenAt =
+          currentConversation['last_seen_at']?.toString();
+
+      if (_isOnline != isOnline || _lastSeenAt != lastSeenAt) {
+        setState(() {
+          _isOnline = isOnline;
+          _lastSeenAt = lastSeenAt;
+        });
+      }
+    } catch (e) {
+      debugPrint('Failed to refresh presence: $e');
+    } finally {
+      _isFetchingPresence = false;
+    }
   }
 }

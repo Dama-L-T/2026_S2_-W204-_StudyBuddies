@@ -400,4 +400,8 @@ class ChatApiClient {
       '/chat/conversations/$conversationId/hide',
     );
   }
+
+  Future<void> sendPresenceHeartbeat() async {
+    await _request('POST', '/chat/presence/heartbeat');
+  }
 }

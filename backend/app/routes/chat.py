@@ -18,6 +18,7 @@ from app.services.chat_service import (
     unblock_user_by_id,
     report_message,
     unreport_message,
+    update_last_seen,
 )
 from app.services.auth_dependency import get_current_user_id
 
@@ -217,3 +218,8 @@ def remove_message_report(
         message_id=message_id,
         user_id=str(user_id),
     )
+
+
+@router.post("/presence/heartbeat")
+def presence_heartbeat(user_id: str = Depends(get_current_user_id)):
+    return update_last_seen(str(user_id))
