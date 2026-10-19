@@ -50,6 +50,7 @@ class _AppBottomNavigationBarState extends State<AppBottomNavigationBar> {
   bool _hasInitialisedInvitations = false;
   bool _openInvitationInbox = false;
   int _matchPageVersion = 0;
+  int _unreadConversationCount = 0;
   bool _checkingInvitations = false;
 
   final Set<String> _knownChatMessageIds = {};
@@ -243,8 +244,14 @@ class _AppBottomNavigationBarState extends State<AppBottomNavigationBar> {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Badge(
-                  isLabelVisible: index == 1 && _invitationCount > 0,
-                  label: Text('$_invitationCount'),
+                  isLabelVisible:
+                      (index == 1 && _invitationCount > 0) ||
+                      (index == 2 && _unreadConversationCount > 0),
+                  label: Text(
+                    index == 1
+                        ? '$_invitationCount'
+                        : '$_unreadConversationCount',
+                  ),
                   child: Icon(icon, color: Colors.black, size: 22),
                 ),
                 const SizedBox(height: 1),
@@ -319,6 +326,17 @@ class _AppBottomNavigationBarState extends State<AppBottomNavigationBar> {
 
     try {
       final conversations = await _chatApi.getConversations();
+      final unreadCount = conversations.where((conversation) {
+        final count =
+            int.tryParse(conversation['unread_count']?.toString() ?? '0') ?? 0;
+        return count > 0;
+      }).length;
+
+      if (mounted && unreadCount != _unreadConversationCount) {
+        setState(() {
+          _unreadConversationCount = unreadCount;
+        });
+      }
       final currentMessageIds = <String>{};
       final messagesToNotify = <Map<String, String>>[];
 
@@ -434,7 +452,7 @@ class _AppBottomNavigationBarState extends State<AppBottomNavigationBar> {
           accessToken: _accessToken,
           onProfileSaved: () {
             setState(() {
-              currentIndex = 0;
+              currentIndex = 3;
               _schedulePageVersion++;
             });
           },

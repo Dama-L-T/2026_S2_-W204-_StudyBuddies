@@ -8,6 +8,7 @@ class StudentProfile {
     this.courses = '',
     this.interests = '',
     this.preferences = '',
+    this.languages = '',
     this.profileImage = '',
   });
 
@@ -17,6 +18,7 @@ class StudentProfile {
   final String courses;
   final String interests;
   final String preferences;
+  final String languages;
   final String profileImage;
 
   String? get imageUrl {
@@ -35,6 +37,7 @@ class StudentProfile {
     courses: json['courses'] as String? ?? '',
     interests: json['interests'] as String? ?? '',
     preferences: json['preferences'] as String? ?? '',
+    languages: json['languages'] as String? ?? '',
     profileImage: json['profile_image'] as String? ?? '',
   );
 
@@ -44,6 +47,7 @@ class StudentProfile {
     'courses': courses,
     'interests': interests,
     'preferences': preferences,
+    'languages': languages,
   };
 
   static List<String> values(String text) => text
