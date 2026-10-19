@@ -19,7 +19,8 @@ class AuthExpiredException implements Exception {
 class ChatApiClient {
   final String apiBaseUrl;
   final FlutterSecureStorage storage;
-
+  
+  String? currentUserId;
   String? _accessToken;
   String? _fallbackRefreshToken;
   Future<bool>? _refreshFuture;
@@ -34,6 +35,10 @@ class ChatApiClient {
 
   Future<List<Map<String, dynamic>>> getConversations() async {
     final result = await _request('GET', '/chat/conversations');
+
+    if (result is Map) {
+      currentUserId = result['current_user_id']?.toString();
+    }
 
     return _extractList(result, [
       'conversations',
@@ -406,5 +411,9 @@ class ChatApiClient {
       'DELETE',
       '/chat/conversations/$conversationId/hide',
     );
+  }
+
+  Future<void> sendPresenceHeartbeat() async {
+    await _request('POST', '/chat/presence/heartbeat');
   }
 }

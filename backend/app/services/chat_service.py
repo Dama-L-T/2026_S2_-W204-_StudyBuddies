@@ -22,6 +22,38 @@ def _profile_name(client, user_id: str) -> str:
     return "Student"
 
 
+def _profile_presence(client, user_id: str) -> dict:
+    result = (
+        client.table("profiles")
+        .select("last_seen_at")
+        .eq("user_id", user_id)
+        .limit(1)
+        .execute()
+    )
+
+    last_seen_at = result.data[0].get("last_seen_at") if result.data else None
+    is_online = False
+
+    if last_seen_at:
+        try:
+            last_seen = datetime.fromisoformat(
+                last_seen_at.replace("Z", "+00:00")
+            )
+            if last_seen.tzinfo is None:
+                last_seen = last_seen.replace(tzinfo=timezone.utc)
+
+            is_online = (
+                datetime.now(timezone.utc) - last_seen
+            ).total_seconds() <= 60
+        except (ValueError, TypeError):
+            last_seen_at = None
+
+    return {
+        "is_online": is_online,
+        "last_seen_at": last_seen_at,
+    }
+
+
 def _get_conversation(client, conversation_id: str, user_id: str) -> dict[str, Any]:
     result = (
         client.table("chat_conversations")
@@ -288,7 +320,7 @@ def list_conversations(user_id: str) -> list[dict]:
 
         latest_result = (
             client.table("chat_messages")
-            .select("content, created_at")
+            .select("id, content, sender_id, created_at")
             .eq("conversation_id", conversation_id)
             .order("created_at", desc=True)
             .limit(1)
@@ -308,15 +340,21 @@ def list_conversations(user_id: str) -> list[dict]:
         blocked_by_me = _is_user_blocked(client, user_id, other_id)
         has_blocked_me = _is_user_blocked(client, other_id, user_id)
 
+        presence = _profile_presence(client, other_id)
+
         conversations.append({
             "id": conversation_id,
             "student_name": _profile_name(client, other_id),
             "last_message": latest_message["content"] if latest_message else "",
+            "last_message_id": str(latest_message["id"]) if latest_message else None,
+            "last_message_sender_id": str(latest_message["sender_id"]) if latest_message else None,
             "last_message_at": latest_message["created_at"] if latest_message else None,
             "unread_count": len(unread_result.data or []),
             "is_blocked_by_me": blocked_by_me,
             "has_blocked_me": has_blocked_me,
             "is_blocked": blocked_by_me or has_blocked_me,
+            "is_online": presence["is_online"],
+            "last_seen_at": presence["last_seen_at"],
         })
 
     conversations.sort(
@@ -715,3 +753,23 @@ def unreport_message(
         "message": "Report removed successfully",
         "is_reported_by_me": False,
     }
+
+
+def update_last_seen(user_id: str) -> dict:
+    client = _client()
+    now = datetime.now(timezone.utc).isoformat()
+
+    result = (
+        client.table("profiles")
+        .update({"last_seen_at": now})
+        .eq("user_id", user_id)
+        .execute()
+    )
+
+    if not result.data:
+        raise HTTPException(
+            status_code=404,
+            detail="Profile not found",
+        )
+
+    return {"last_seen_at": now}

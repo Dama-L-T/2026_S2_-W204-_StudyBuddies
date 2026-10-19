@@ -12,12 +12,16 @@ class ChatPage extends StatefulWidget {
   final String apiBaseUrl;
   final String? accessToken;
   final String? refreshToken;
+  final String? initialConversationId;
+  final ValueChanged<String?>? onActiveConversationChanged;
 
   const ChatPage({
     super.key,
     required this.apiBaseUrl,
     required this.accessToken,
     required this.refreshToken,
+    this.initialConversationId,
+    this.onActiveConversationChanged,
   });
 
   @override
@@ -29,10 +33,12 @@ class _ChatPageState extends State<ChatPage> {
 
   late final ChatApiClient _api;
   Timer? _pollTimer;
+  Timer? _presenceTimer;
 
   List<Map<String, dynamic>> _conversations = [];
   bool _isLoading = true;
   bool _hasError = false;
+  bool _hasHandledInitialConversation = false;
 
   @override
   void initState() {
@@ -51,12 +57,57 @@ class _ChatPageState extends State<ChatPage> {
       const Duration(seconds: 2),
       (_) => _loadConversations(silent: true),
     );
+
+    _sendPresenceHeartbeat();
+
+    _presenceTimer = Timer.periodic(
+      const Duration(seconds: 30),
+      (_) => _sendPresenceHeartbeat(),
+    );
   }
 
   @override
   void dispose() {
     _pollTimer?.cancel();
+    _presenceTimer?.cancel();
     super.dispose();
+  }
+
+  Future<void> _sendPresenceHeartbeat() async {
+    try {
+      await _api.sendPresenceHeartbeat();
+    } catch (_) {
+      // Presence is optional; don't interrupt the chat screen.
+    }
+  }
+
+  Future<void> _openInitialConversation(
+    List<Map<String, dynamic>> conversations,
+  ) async {
+    final conversationId = widget.initialConversationId;
+
+    if (_hasHandledInitialConversation ||
+        conversationId == null ||
+        conversationId.isEmpty) {
+      return;
+    }
+
+    final conversationIndex = conversations.indexWhere(
+      (conversation) =>
+          conversation['id']?.toString() == conversationId,
+    );
+
+    if (conversationIndex == -1) {
+      return;
+    }
+
+    _hasHandledInitialConversation = true;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+
+      _openConversation(conversations[conversationIndex]);
+    });
   }
 
   Future<void> _loadConversations({bool silent = false}) async {
@@ -77,6 +128,8 @@ class _ChatPageState extends State<ChatPage> {
         _isLoading = false;
         _hasError = false;
       });
+
+      await _openInitialConversation(conversations);
     } on AuthExpiredException {
       if (!mounted) return;
 
@@ -133,12 +186,17 @@ class _ChatPageState extends State<ChatPage> {
   Future<void> _openConversation(
     Map<String, dynamic> conversation,
   ) async {
-    if (_value(conversation['id']).isEmpty) {
+    final conversationId = _value(conversation['id']);
+
+    if (conversationId.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Invalid conversation.')),
       );
       return;
     }
+
+    // Tell the bottom navigation bar which conversation is open.
+    widget.onActiveConversationChanged?.call(conversationId);
 
     await Navigator.push(
       context,
@@ -149,6 +207,9 @@ class _ChatPageState extends State<ChatPage> {
         ),
       ),
     );
+
+    // Clear the active conversation when returning to the chat list.
+    widget.onActiveConversationChanged?.call(null);
 
     if (mounted) {
       await _loadConversations();
@@ -244,11 +305,6 @@ class _ChatPageState extends State<ChatPage> {
           'Start a conversation',
         );
 
-        final time = _formatTime(
-          conversation['last_message_at'] ??
-              conversation['updated_at'],
-        );
-
         final unread = _unreadCount(conversation['unread_count']);
 
         final isBlocked =
@@ -261,93 +317,128 @@ class _ChatPageState extends State<ChatPage> {
             horizontal: 16,
             vertical: 6,
           ),
-          leading: CircleAvatar(
-            radius: 25,
-            backgroundColor: Colors.blue.shade50,
-            child: Text(
-              name.isNotEmpty ? name[0].toUpperCase() : 'S',
-              style: TextStyle(
-                color: Colors.blue.shade700,
-                fontWeight: FontWeight.bold,
-                fontSize: 18,
+          leading: Stack(
+            children: [
+              CircleAvatar(
+                child: Text(
+                  name.isNotEmpty ? name[0].toUpperCase() : 'S',
+                ),
               ),
-            ),
-          ),
-          title: Text(
-            name,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              fontWeight: FontWeight.w600,
-              color: Colors.black,
-            ),
-          ),
-          subtitle: Padding(
-            padding: const EdgeInsets.only(top: 5),
-            child: Text(
-              isBlocked ? 'Blocked' : lastMessage,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: isBlocked
-                    ? Colors.red.shade700
-                    : (unread > 0 ? Colors.black87 : Colors.grey.shade600),
-                fontWeight: isBlocked || unread > 0
-                    ? FontWeight.w600
-                    : FontWeight.normal,
-              ),
-            ),
-          ),
-          trailing: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 70),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                if (time.isNotEmpty)
-                  Text(
-                    time,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 11,
-                      color: Colors.grey,
+              Positioned(
+                right: 0,
+                bottom: 0,
+                child: Container(
+                  width: 12,
+                  height: 12,
+                  decoration: BoxDecoration(
+                    color: conversation['is_online'] == true
+                        ? Colors.green
+                        : Colors.grey,
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: Colors.white,
+                      width: 2,
                     ),
                   ),
-                if (unread > 0) ...[
-                  const SizedBox(height: 6),
-                  Container(
-                    constraints: const BoxConstraints(
-                      minWidth: 21,
-                      minHeight: 21,
-                    ),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 6,
-                      vertical: 3,
-                    ),
-                    decoration: const BoxDecoration(
-                      color: Colors.blue,
-                      shape: BoxShape.circle,
-                    ),
-                    child: Center(
-                      child: Text(
-                        unread > 99 ? '99+' : '$unread',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 11,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ],
-            ),
+                ),
+              ),
+            ],
           ),
+          title: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                conversation['is_online'] == true
+                    ? 'Online'
+                    : _formatLastSeen(conversation['last_seen_at']),
+                style: TextStyle(
+                  fontSize: 11,
+                  color: conversation['is_online'] == true
+                      ? Colors.green
+                      : Colors.grey,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
+          subtitle: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  isBlocked ? 'Messaging unavailable' : lastMessage,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                _formatTime(conversation['last_message_at']),
+                style: TextStyle(
+                  fontSize: 11,
+                  color: Colors.grey.shade600,
+                ),
+              ),
+            ],
+          ),
+          trailing: unread > 0
+          ? Container(
+              constraints: const BoxConstraints(
+                minWidth: 21,
+                minHeight: 21,
+              ),
+              padding: const EdgeInsets.symmetric(
+                horizontal: 6,
+                vertical: 3,
+              ),
+              decoration: const BoxDecoration(
+                color: Colors.blue,
+                shape: BoxShape.circle,
+              ),
+              child: Text(
+                unread > 99 ? '99+' : '$unread',
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 11,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            )
+          : null,
           onTap: () => _openConversation(conversation),
         );
       },
     );
+  }
+
+  String _formatLastSeen(dynamic value) {
+    if (value == null) return 'Activity unavailable';
+
+    final lastSeen = DateTime.tryParse(value.toString())?.toLocal();
+    if (lastSeen == null) return 'Activity unavailable';
+
+    final difference = DateTime.now().difference(lastSeen);
+
+    if (difference.inSeconds < 0) return 'Last active just now';
+    if (difference.inMinutes < 1) return 'Last active just now';
+    if (difference.inMinutes < 60) {
+      return 'Last active ${difference.inMinutes}m ago';
+    }
+    if (difference.inHours < 24) {
+      return 'Last active ${difference.inHours}h ago';
+    }
+    if (difference.inDays < 7) {
+      return 'Last active ${difference.inDays}d ago';
+    }
+
+    return 'Last active ${lastSeen.day}/${lastSeen.month}/${lastSeen.year}';
   }
 }
