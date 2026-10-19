@@ -98,3 +98,83 @@ def remove_interest(db, user_id, target_id):
     db.table('matchmaking_interests').delete().eq('student_id', user_id).eq(
         'target_student_id', target_id
     ).eq('status', 'interested').execute()
+
+
+def matched_partners(db, user_id):
+    """Return only accepted connections involving the authenticated student."""
+    connections = rows(db.table('student_matching').select(
+        'id,student_id,target_student_id'
+    ).eq('status', 'accepted').or_(
+        f'student_id.eq.{user_id},target_student_id.eq.{user_id}'
+    ).order('id'))
+    partner_ids = set()
+    for connection in connections:
+        sender, recipient = connection['student_id'], connection['target_student_id']
+        if sender == user_id and recipient != user_id:
+            partner_ids.add(recipient)
+        elif recipient == user_id and sender != user_id:
+            partner_ids.add(sender)
+    profiles = []
+    ids = sorted(partner_ids)
+    for start in range(0, len(ids), 100):
+        batch = rows(db.table('profiles').select(
+            'user_id,name,courses,interests,profile_image,'
+            'name_visible,courses_visible,interests_visible'
+        ).in_('user_id', ids[start:start + 100]).order('user_id'))
+        for row in batch:
+            profile = {'user_id': row['user_id'],
+                       'profile_image': row.get('profile_image') or ''}
+            for field in ('name', 'courses', 'interests'):
+                profile[field] = (row.get(field) or '') if row.get(field + '_visible') is True else ''
+            profiles.append(profile)
+    return sorted(profiles, key=lambda p: (p['name'].casefold(), p['user_id']))
+
+
+class InvitationConflict(ValueError):
+    pass
+
+
+def send_invitation(db, user_id, target_id):
+    """Create a pending request; never accept or overwrite an existing pair."""
+    if user_id == target_id:
+        raise ValueError('You cannot invite yourself.')
+    get_public_profile(db, user_id, target_id)
+
+    def existing_pair():
+        result = db.table('student_matching').select(
+            'id,student_id,target_student_id,status'
+        ).in_('student_id', [user_id, target_id]).in_(
+            'target_student_id', [user_id, target_id]
+        ).limit(1).execute().data or []
+        return result[0] if result else None
+
+    def describe(connection):
+        if connection['status'] == 'accepted':
+            raise InvitationConflict('You are already matched with this student.')
+        if connection['status'] == 'declined':
+            raise InvitationConflict('This invitation was declined. It cannot be resent.')
+        if connection['student_id'] != user_id:
+            raise InvitationConflict('This student has already invited you. Respond to their invitation instead.')
+        return {'id': connection['id'], 'status': 'pending',
+                'message': 'Invitation sent. Waiting for their response.'}
+
+    existing = existing_pair()
+    if existing:
+        return describe(existing)
+    try:
+        result = db.table('student_matching').insert({
+            'student_id': user_id,
+            'target_student_id': target_id,
+            'status': 'pending',
+        }).execute().data
+    except Exception as error:
+        # The unique pair index also protects simultaneous/reverse requests.
+        if getattr(error, 'code', None) != '23505':
+            raise
+        existing = existing_pair()
+        if existing is None:
+            raise
+        return describe(existing)
+    if not result:
+        raise RuntimeError('Invitation was not saved.')
+    return describe(result[0])

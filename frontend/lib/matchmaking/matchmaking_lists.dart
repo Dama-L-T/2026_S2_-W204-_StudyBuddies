@@ -21,6 +21,7 @@ class _SavedProfilesPageState extends State<_SavedProfilesPage> {
   List<StudentProfile> _profiles = [];
   bool _loading = true;
   bool _acting = false;
+  final _sentInvitations = <String>{};
   String? _error;
   bool get _uninterested => widget.status == 'uninterested';
 
@@ -99,6 +100,31 @@ class _SavedProfilesPageState extends State<_SavedProfilesPage> {
           content: Text('This student can appear in your next search.'),
         ),
       );
+    } catch (error) {
+      if (mounted) {
+        setState(
+          () => _error = error.toString().replaceFirst('Exception: ', ''),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _acting = false);
+    }
+  }
+
+  Future<void> _sendInvitation(StudentProfile student) async {
+    if (_acting || _loading || _sentInvitations.contains(student.userId))
+      return;
+    setState(() {
+      _acting = true;
+      _error = null;
+    });
+    try {
+      final message = await widget.api.sendInvitation(student.userId);
+      if (!mounted) return;
+      setState(() => _sentInvitations.add(student.userId));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
     } catch (error) {
       if (mounted) {
         setState(
@@ -213,9 +239,18 @@ class _SavedProfilesPageState extends State<_SavedProfilesPage> {
                         child: const Text('View profile'),
                       ),
                       if (!_uninterested)
-                        const FilledButton(
-                          onPressed: null,
-                          child: Text('Send invite'),
+                        FilledButton(
+                          onPressed:
+                              _acting ||
+                                  _loading ||
+                                  _sentInvitations.contains(student.userId)
+                              ? null
+                              : () => _sendInvitation(student),
+                          child: Text(
+                            _sentInvitations.contains(student.userId)
+                                ? 'Invite sent'
+                                : 'Send invite',
+                          ),
                         ),
                     ],
                   ),

@@ -18,6 +18,10 @@ def database():
 def run(operation):
     try:
         return operation()
+    except service.InvitationConflict as error:
+        raise HTTPException(409, str(error)) from error
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from error
     except LookupError as error:
         raise HTTPException(404, str(error)) from error
     except Exception as error:
@@ -32,6 +36,16 @@ class Choice(BaseModel):
 @router.get('')
 def find_students(criterion: Literal['courses', 'interests', 'both'] = 'both', user_id: str = Depends(get_current_user_id), db=Depends(database)):
     return run(lambda: service.recommendations(db, user_id, criterion))
+
+
+@router.post('/invitations/{target_id}')
+def send_invitation(target_id: UUID, user_id: str = Depends(get_current_user_id), db=Depends(database)):
+    return run(lambda: service.send_invitation(db, user_id, str(target_id)))
+
+
+@router.get('/partners')
+def matched_partners(user_id: str = Depends(get_current_user_id), db=Depends(database)):
+    return run(lambda: service.matched_partners(db, user_id))
 
 
 @router.get('/profiles/{target_id}')

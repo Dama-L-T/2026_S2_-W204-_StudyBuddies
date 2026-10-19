@@ -6,6 +6,7 @@ import 'matchmaking_api.dart';
 
 part 'matchmaking_widgets.dart';
 part 'matchmaking_lists.dart';
+part 'matched_partners.dart';
 
 class MatchmakingPage extends StatefulWidget {
   const MatchmakingPage({
@@ -28,6 +29,7 @@ class _MatchmakingPageState extends State<MatchmakingPage> {
   List<Recommendation> _students = [];
   final _criteria = <String>{'courses', 'interests'};
   final _sessionSkipped = <String>{};
+  final _sentInvitations = <String>{};
   bool _busy = true;
   bool _swiping = false;
   String? _error;
@@ -116,6 +118,28 @@ class _MatchmakingPageState extends State<MatchmakingPage> {
           duration: const Duration(seconds: 2),
         ),
       );
+    } catch (error) {
+      if (mounted) setState(() => _error = _message(error));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _sendInvitation() async {
+    if (_busy || _students.isEmpty) return;
+    final id = _students.first.profile.userId;
+    if (_sentInvitations.contains(id)) return;
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    try {
+      final message = await _api.sendInvitation(id);
+      if (!mounted) return;
+      setState(() => _sentInvitations.add(id));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
     } catch (error) {
       if (mounted) setState(() => _error = _message(error));
     } finally {
@@ -225,6 +249,20 @@ class _MatchmakingPageState extends State<MatchmakingPage> {
             ],
           ),
           const SizedBox(height: 16),
+          OutlinedButton.icon(
+            key: const Key('matched-partners'),
+            onPressed: _busy
+                ? null
+                : () => Navigator.push<void>(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => _MatchedPartnersPage(api: _api),
+                    ),
+                  ),
+            icon: const Icon(Icons.handshake_outlined),
+            label: const Text('Matched partners'),
+          ),
+          const SizedBox(height: 16),
           const Text('Find students with shared courses, interests, or both.'),
           const SizedBox(height: 16),
           if (_profile case final profile?) ...[
@@ -299,6 +337,10 @@ class _MatchmakingPageState extends State<MatchmakingPage> {
             },
             onUninterested: () => _saveChoice('uninterested'),
             onView: _viewProfile,
+            onInvite: _sendInvitation,
+            invitationSent: _sentInvitations.contains(
+              _students.first.profile.userId,
+            ),
           ),
           const SizedBox(height: 12),
           const Text(

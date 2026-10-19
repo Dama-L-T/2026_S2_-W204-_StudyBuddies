@@ -8,12 +8,16 @@ class _StudentCard extends StatefulWidget {
     required this.onSwipe,
     required this.onUninterested,
     required this.onView,
+    required this.onInvite,
+    required this.invitationSent,
   });
   final Recommendation student;
   final bool enabled;
   final ValueChanged<bool> onSwipe;
   final VoidCallback onUninterested;
   final VoidCallback onView;
+  final VoidCallback onInvite;
+  final bool invitationSent;
   @override
   State<_StudentCard> createState() => _StudentCardState();
 }
@@ -100,9 +104,13 @@ class _StudentCardState extends State<_StudentCard> {
                     ),
                   ),
                 const SizedBox(height: 20),
-                const FilledButton(
-                  onPressed: null,
-                  child: Text('Send request'),
+                FilledButton(
+                  onPressed: widget.enabled && !widget.invitationSent
+                      ? widget.onInvite
+                      : null,
+                  child: Text(
+                    widget.invitationSent ? 'Request sent' : 'Send request',
+                  ),
                 ),
                 OutlinedButton(
                   onPressed: widget.enabled ? widget.onUninterested : null,

@@ -70,6 +70,21 @@ class MatchmakingApi {
     '/matchmaking/choices/${Uri.encodeComponent(id)}',
     {'status': status},
   );
+  Future<String> sendInvitation(String id) async {
+    final response =
+        await request(
+              'POST',
+              '/matchmaking/invitations/${Uri.encodeComponent(id)}',
+            )
+            as Map;
+    return response['message'] as String;
+  }
+
+  Future<List<StudentProfile>> matchedPartners() async => [
+    for (final item in await request('GET', '/matchmaking/partners') as List)
+      StudentProfile.fromJson(Map<String, dynamic>.from(item as Map)),
+  ];
+
   Future<void> restoreDismissed() async =>
       request('DELETE', '/matchmaking/dismissals');
 
