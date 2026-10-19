@@ -25,13 +25,18 @@ def _profile_name(client, user_id: str) -> str:
 def _profile_presence(client, user_id: str) -> dict:
     result = (
         client.table("profiles")
-        .select("last_seen_at")
+        .select("last_seen_at, availability_status")
         .eq("user_id", user_id)
         .limit(1)
         .execute()
     )
 
-    last_seen_at = result.data[0].get("last_seen_at") if result.data else None
+    profile = result.data[0] if result.data else {}
+    last_seen_at = profile.get("last_seen_at")
+    availability_status = (
+        profile.get("availability_status") or "available"
+    ).lower()
+
     is_online = False
 
     if last_seen_at:
@@ -51,6 +56,7 @@ def _profile_presence(client, user_id: str) -> dict:
     return {
         "is_online": is_online,
         "last_seen_at": last_seen_at,
+        "availability_status": availability_status,
     }
 
 
@@ -486,6 +492,7 @@ def list_conversations(user_id: str) -> list[dict]:
             "is_blocked": blocked_by_me or has_blocked_me,
             "is_online": presence["is_online"],
             "last_seen_at": presence["last_seen_at"],
+            "availability_status": presence["availability_status"],
         })
 
     conversations.sort(

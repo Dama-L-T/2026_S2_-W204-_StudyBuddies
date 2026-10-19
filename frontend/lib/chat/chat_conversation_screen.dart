@@ -27,6 +27,7 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
   Timer? _presenceTimer;
 
   bool _isOnline = false;
+  String _availabilityStatus = 'available';
   String? _lastSeenAt;
   bool _isFetchingPresence = false; 
   List<Map<String, dynamic>> _messages = [];
@@ -59,6 +60,10 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
 
     _isOnline = widget.conversation['is_online'] == true;
     _lastSeenAt = widget.conversation['last_seen_at']?.toString();
+    _availabilityStatus =
+        (widget.conversation['availability_status'] ?? 'available')
+            .toString()
+            .toLowerCase();
 
     _loadMessages();
     _loadBlockStatus();
@@ -778,18 +783,36 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
                 Positioned(
                   right: 0,
                   bottom: 0,
-                  child: Container(
-                    width: 12,
-                    height: 12,
-                    decoration: BoxDecoration(
-                      color: _isOnline ? Colors.green : Colors.grey,
-                      shape: BoxShape.circle,
-                      border: Border.all(
-                        color: Colors.white,
-                        width: 2,
-                      ),
-                    ),
-                  ),
+                  child: _availabilityStatus == 'busy'
+                      ? Container(
+                          width: 20,
+                          height: 20,
+                          decoration: BoxDecoration(
+                            color: Colors.orange.shade100,
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: Colors.white,
+                              width: 2,
+                            ),
+                          ),
+                          child: Icon(
+                            Icons.coffee,
+                            size: 12,
+                            color: Colors.orange.shade800,
+                          ),
+                        )
+                      : Container(
+                          width: 12,
+                          height: 12,
+                          decoration: BoxDecoration(
+                            color: _isOnline ? Colors.green : Colors.grey,
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: Colors.white,
+                              width: 2,
+                            ),
+                          ),
+                        ),
                 ),
               ],
             ),
@@ -810,17 +833,25 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
                     ),
                   ),
                   const SizedBox(height: 2),
-                  Text(
-                    _isOnline
-                        ? 'Online'
-                        : _formatLastSeen(_lastSeenAt),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: _isOnline ? Colors.green : Colors.grey,
-                      fontSize: 12,
+                  if (_availabilityStatus == 'busy')
+                    Text(
+                      'Busy',
+                      style: TextStyle(
+                        color: Colors.orange.shade800,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    )
+                  else
+                    Text(
+                      _isOnline ? 'Online' : _formatLastSeen(_lastSeenAt),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: _isOnline ? Colors.green : Colors.grey,
+                        fontSize: 12,
+                      ),
                     ),
-                  ),
                 ],
               ),
             ),
@@ -1197,11 +1228,18 @@ class _ChatConversationScreenState extends State<ChatConversationScreen> {
       final isOnline = currentConversation['is_online'] == true;
       final lastSeenAt =
           currentConversation['last_seen_at']?.toString();
+      final availabilityStatus =
+          (currentConversation['availability_status'] ?? 'available')
+              .toString()
+              .toLowerCase();
 
-      if (_isOnline != isOnline || _lastSeenAt != lastSeenAt) {
+      if (_isOnline != isOnline ||
+          _lastSeenAt != lastSeenAt ||
+          _availabilityStatus != availabilityStatus) {
         setState(() {
           _isOnline = isOnline;
           _lastSeenAt = lastSeenAt;
+          _availabilityStatus = availabilityStatus;
         });
       }
     } catch (e) {
