@@ -123,13 +123,14 @@ class ScheduleItemDetailScreen extends StatelessWidget {
     final textTheme = Theme.of(context).textTheme;
     final colorScheme = Theme.of(context).colorScheme;
     final isAssignment = item.itemType == 'Assignment';
-    final status = item.status.toLowerCase() == 'completed'
-        ? 'Completed'
-        : 'Pending';
+    final status = _assignmentProgressLabel(item.status);
     final urgency = _effectiveAssignmentUrgencyLabel(item);
 
     return Scaffold(
-      appBar: const AppBarWidget(title: 'Schedule Details', showBackButton: true),
+      appBar: const AppBarWidget(
+        title: 'Schedule Details',
+        showBackButton: true,
+      ),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -213,10 +214,7 @@ class ScheduleItemDetailScreen extends StatelessWidget {
 }
 
 class _StudyItemCard extends StatelessWidget {
-  const _StudyItemCard({
-    required this.item,
-    required this.onTap,
-  });
+  const _StudyItemCard({required this.item, required this.onTap});
 
   final StudyItem item;
   final VoidCallback onTap;
@@ -266,11 +264,7 @@ class _StudyItemCard extends StatelessWidget {
                   ),
                   if (isAssignment)
                     Chip(
-                      label: Text(
-                        item.status.toLowerCase() == 'completed'
-                            ? 'Completed'
-                            : 'Pending',
-                      ),
+                      label: Text(_assignmentProgressLabel(item.status)),
                       visualDensity: VisualDensity.compact,
                     ),
                   if (isAssignment && urgency.isNotEmpty)
