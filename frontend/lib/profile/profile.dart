@@ -28,6 +28,13 @@ class _ProfilePageState extends State<ProfilePage> {
   final interestsController = TextEditingController();
   final preferencesController = TextEditingController();
 
+  // Profile privacy settings
+  bool nameVisible = true;
+  bool personalDetailsVisible = true;
+  bool coursesVisible = true;
+  bool interestsVisible = true;
+  bool preferencesVisible = true;
+
   final ImagePicker imagePicker = ImagePicker();
 
   XFile? profileImage;
@@ -61,8 +68,17 @@ class _ProfilePageState extends State<ProfilePage> {
               data['personal_details'] ?? '';
           coursesController.text = data['courses'] ?? '';
           interestsController.text = data['interests'] ?? '';
-          preferencesController.text =
+                    preferencesController.text =
               data['preferences'] ?? '';
+
+          // Load saved privacy settings
+          nameVisible = data['name_visible'] ?? true;
+          personalDetailsVisible =
+              data['personal_details_visible'] ?? true;
+          coursesVisible = data['courses_visible'] ?? true;
+          interestsVisible = data['interests_visible'] ?? true;
+          preferencesVisible = data['preferences_visible'] ?? true;
+
           isLoading = false;
         });
       } else if (response.statusCode == 404) {
@@ -141,6 +157,11 @@ class _ProfilePageState extends State<ProfilePage> {
           'interests': interestsController.text.trim(),
           'preferences':
               preferencesController.text.trim(),
+          'name_visible': nameVisible,
+          'personal_details_visible': personalDetailsVisible,
+          'courses_visible': coursesVisible,
+          'interests_visible': interestsVisible,
+          'preferences_visible': preferencesVisible,
         }),
       );
 
@@ -359,9 +380,97 @@ class _ProfilePageState extends State<ProfilePage> {
                           'e.g. Study preferences, group work, etc.',
                     ),
                   ),
+                  const SizedBox(height: 30),
+
+                  // PRIVACY SETTINGS
+                  const Text(
+                    'Privacy Settings',
+                    style: TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+
+                  const SizedBox(height: 10),
+
+                  const Text(
+                    'Choose which information other students can see on your profile.',
+                    style: TextStyle(
+                      color: Colors.grey,
+                      fontSize: 14,
+                    ),
+                  ),
+
+                  const SizedBox(height: 15),
+
+                  SwitchListTile(
+                    title: const Text('Name'),
+                    subtitle: const Text(
+                      'Show my name to other students',
+                    ),
+                    value: nameVisible,
+                    onChanged: (value) {
+                      setState(() {
+                        nameVisible = value;
+                      });
+                    },
+                  ),
+
+                  SwitchListTile(
+                    title: const Text('Personal Details'),
+                    subtitle: const Text(
+                      'Show my personal details to other students',
+                    ),
+                    value: personalDetailsVisible,
+                    onChanged: (value) {
+                      setState(() {
+                        personalDetailsVisible = value;
+                      });
+                    },
+                  ),
+
+                  SwitchListTile(
+                    title: const Text('Courses'),
+                    subtitle: const Text(
+                      'Show my courses to other students',
+                    ),
+                    value: coursesVisible,
+                    onChanged: (value) {
+                      setState(() {
+                        coursesVisible = value;
+                      });
+                    },
+                  ),
+
+                  SwitchListTile(
+                    title: const Text('Interests'),
+                    subtitle: const Text(
+                      'Show my interests to other students',
+                    ),
+                    value: interestsVisible,
+                    onChanged: (value) {
+                      setState(() {
+                        interestsVisible = value;
+                      });
+                    },
+                  ),
+
+                  SwitchListTile(
+                    title: const Text('Preferences'),
+                    subtitle: const Text(
+                      'Show my preferences to other students',
+                    ),
+                    value: preferencesVisible,
+                    onChanged: (value) {
+                      setState(() {
+                        preferencesVisible = value;
+                      });
+                    },
+                  ),
 
                   const SizedBox(height: 30),
 
+                  // SAVE PROFILE BUTTON
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(
