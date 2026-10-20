@@ -1,5 +1,6 @@
 """Match existing profiles, excluding the current student's saved choices."""
 import re
+from app.services.chat_service import ensure_chat_conversation
 
 FIELDS = ('name', 'courses', 'interests', 'preferences', 'profile_image')
 
@@ -209,23 +210,59 @@ def incoming_invitations(db, user_id):
 
 
 def respond_to_invitation(db, user_id, invitation_id, status):
-    if status not in ('accepted', 'declined'):
-        raise ValueError('Choose accepted or declined.')
-    existing = db.table('student_matching').select('id,status').eq(
-        'id', invitation_id
-    ).eq('target_student_id', user_id).limit(1).execute().data or []
+    if status not in ("accepted", "declined"):
+        raise ValueError("Choose accepted or declined.")
+
+    existing = (
+        db.table("student_matching")
+        .select("id, student_id, target_student_id, status")
+        .eq("id", invitation_id)
+        .eq("target_student_id", user_id)
+        .limit(1)
+        .execute()
+        .data
+        or []
+    )
+
     if not existing:
-        raise LookupError('Invitation not found.')
-    if existing[0]['status'] == status:
-        return {'id': invitation_id, 'status': status}
-    if existing[0]['status'] != 'pending':
-        raise InvitationConflict('This invitation has already been answered. Refresh your invitations.')
-    updated = db.table('student_matching').update({'status': status}).eq(
-        'id', invitation_id
-    ).eq('target_student_id', user_id).eq('status', 'pending').execute().data or []
+        raise LookupError("Invitation not found.")
+
+    invitation = existing[0]
+    sender_id = str(invitation["student_id"])
+    current_status = invitation["status"]
+
+    if current_status == status:
+        if status == "accepted":
+            ensure_chat_conversation(str(user_id), sender_id)
+
+        return {"id": invitation_id, "status": status}
+
+    if current_status != "pending":
+        raise InvitationConflict(
+            "This invitation has already been answered. "
+            "Refresh your invitations."
+        )
+
+    updated = (
+        db.table("student_matching")
+        .update({"status": status})
+        .eq("id", invitation_id)
+        .eq("target_student_id", user_id)
+        .eq("status", "pending")
+        .execute()
+        .data
+        or []
+    )
+
     if not updated:
-        raise InvitationConflict('This invitation changed. Refresh your invitations.')
-    return {'id': invitation_id, 'status': status}
+        raise InvitationConflict(
+            "This invitation changed. Refresh your invitations."
+        )
+
+    if status == "accepted":
+        ensure_chat_conversation(str(user_id), sender_id)
+
+    return {"id": invitation_id, "status": status}
 
 
 def invitation_statuses(db, user_id):

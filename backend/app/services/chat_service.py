@@ -81,6 +81,92 @@ def _other_user_id(conversation: dict[str, Any], user_id: str) -> str:
     return participant_two if participant_one == user_id else participant_one
 
 
+
+def ensure_chat_conversation(user_id: str, other_id: str) -> dict:
+    client = _client()
+
+    if user_id == other_id:
+        raise HTTPException(
+            status_code=400,
+            detail="You cannot create a conversation with yourself.",
+        )
+
+    _ensure_students_matched(client, user_id, other_id)
+
+    columns = "id, participant_one_id, participant_two_id, created_at"
+
+    # Look for an existing conversation in either participant order.
+    for first_id, second_id in (
+        (user_id, other_id),
+        (other_id, user_id),
+    ):
+        result = (
+            client.table("chat_conversations")
+            .select(columns)
+            .eq("participant_one_id", first_id)
+            .eq("participant_two_id", second_id)
+            .limit(1)
+            .execute()
+        )
+
+        if result.data:
+            return result.data[0]
+
+    # Create a conversation only if one does not already exist.
+    result = (
+        client.table("chat_conversations")
+        .insert({
+            "participant_one_id": user_id,
+            "participant_two_id": other_id,
+        })
+        .execute()
+    )
+
+    if not result.data:
+        raise HTTPException(
+            status_code=500,
+            detail="Could not create the chat conversation.",
+        )
+
+    return result.data[0]
+
+
+def _are_students_matched(client, user_id: str, other_id: str) -> bool:
+    """Return True if either direction has an accepted matching record."""
+    forward = (
+        client.table("student_matching")
+        .select("id")
+        .eq("student_id", user_id)
+        .eq("target_student_id", other_id)
+        .eq("status", "accepted")
+        .limit(1)
+        .execute()
+    )
+
+    if forward.data:
+        return True
+
+    reverse = (
+        client.table("student_matching")
+        .select("id")
+        .eq("student_id", other_id)
+        .eq("target_student_id", user_id)
+        .eq("status", "accepted")
+        .limit(1)
+        .execute()
+    )
+
+    return bool(reverse.data)
+
+
+def _ensure_students_matched(client, user_id: str, other_id: str) -> None:
+    if not _are_students_matched(client, user_id, other_id):
+        raise HTTPException(
+            status_code=403,
+            detail="You can only chat with students who have accepted your invitation.",
+        )
+
+
 def _find_action_by_conversation(client, user_id: str, conversation_id: str):
     result = (
         client.table("chat_user_actions")
@@ -306,6 +392,10 @@ def list_conversations(user_id: str) -> list[dict]:
         conversation_id = str(conversation["id"])
         other_id = _other_user_id(conversation, user_id)
 
+        # Only show conversations between students with an accepted match.
+        if not _are_students_matched(client, user_id, other_id):
+            continue
+
         hidden_result = (
             client.table("chat_user_actions")
             .select("id")
@@ -367,6 +457,11 @@ def list_conversations(user_id: str) -> list[dict]:
 def list_messages(conversation_id: str, user_id: str) -> list[dict]:
     client = _client()
     _get_conversation(client, conversation_id, user_id)
+    
+    conversation = _get_conversation(client, conversation_id, user_id)
+    other_id = _other_user_id(conversation, user_id)
+
+    _ensure_students_matched(client, user_id, other_id)
 
     result = (
         client.table("chat_messages")
@@ -426,6 +521,8 @@ def send_message(conversation_id: str, user_id: str, content: str) -> dict:
     client = _client()
     conversation = _get_conversation(client, conversation_id, user_id)
     other_id = _other_user_id(conversation, user_id)
+
+    _ensure_students_matched(client, user_id, other_id)
 
     if _is_user_blocked(client, user_id, other_id) or _is_user_blocked(client, other_id, user_id):
         raise HTTPException(

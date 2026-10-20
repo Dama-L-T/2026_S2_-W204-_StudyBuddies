@@ -70,6 +70,11 @@ class _AppBottomNavigationBarState extends State<AppBottomNavigationBar> {
       storage: _storage,
     );
 
+    // Default to Schedule when opening the app normally.
+    currentIndex = 0;
+
+    // If the app was opened through a notification,
+    // navigate to the corresponding page.
     _applyNotificationPayload(widget.initialNotificationPayload);
     notificationService.onNotificationTapped = _handleNotificationPayload;
 
