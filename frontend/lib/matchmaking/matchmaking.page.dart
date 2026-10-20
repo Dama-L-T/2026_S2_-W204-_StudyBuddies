@@ -17,11 +17,13 @@ class MatchmakingPage extends StatefulWidget {
     required this.accessToken,
     this.api,
     this.openInvitationsOnLaunch = false,
+    this.openPartnersOnLaunch = false,
   });
   final String apiBaseUrl;
   final String accessToken;
   final MatchmakingApi? api;
   final bool openInvitationsOnLaunch;
+  final bool openPartnersOnLaunch;
   @override
   State<MatchmakingPage> createState() => _MatchmakingPageState();
 }
@@ -45,7 +47,11 @@ class _MatchmakingPageState extends State<MatchmakingPage> {
   void initState() {
     super.initState();
     _loadProfile();
-    if (widget.openInvitationsOnLaunch) {
+    if (widget.openPartnersOnLaunch) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) unawaited(_openPartners());
+      });
+    } else if (widget.openInvitationsOnLaunch) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) unawaited(_openInvitations());
       });
@@ -75,6 +81,13 @@ class _MatchmakingPageState extends State<MatchmakingPage> {
     } finally {
       _checkingInvitations = false;
     }
+  }
+
+  Future<void> _openPartners() async {
+    await Navigator.push<void>(
+      context,
+      MaterialPageRoute(builder: (_) => _MatchedPartnersPage(api: _api)),
+    );
   }
 
   Future<void> _openInvitations() async {
@@ -353,14 +366,7 @@ class _MatchmakingPageState extends State<MatchmakingPage> {
           const SizedBox(height: 16),
           OutlinedButton.icon(
             key: const Key('matched-partners'),
-            onPressed: _busy
-                ? null
-                : () => Navigator.push<void>(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => _MatchedPartnersPage(api: _api),
-                    ),
-                  ),
+            onPressed: _busy ? null : _openPartners,
             icon: const Icon(Icons.handshake_outlined),
             label: const Text('Matched partners'),
           ),

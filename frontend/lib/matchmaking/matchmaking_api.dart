@@ -96,6 +96,11 @@ class MatchmakingApi {
       StudyInvitation.fromJson(Map<String, dynamic>.from(item as Map)),
   ];
 
+  Future<Map<String, dynamic>> acceptedInvitations() async =>
+      Map<String, dynamic>.from(
+        await request('GET', '/matchmaking/invitations/accepted') as Map,
+      );
+
   Future<List<String>> pendingInvitationIds() async {
     final response =
         await request('GET', '/matchmaking/invitations/count') as Map;

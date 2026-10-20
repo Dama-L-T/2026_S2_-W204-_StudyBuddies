@@ -490,7 +490,7 @@ class _ProfilePageState extends State<ProfilePage> {
                             : const Text('Save Profile'),
                       ),
                     ),
-                  const SizedBox(height: 30),
+                  const SizedBox(height: 80),
                 ],
               ),
             ),
