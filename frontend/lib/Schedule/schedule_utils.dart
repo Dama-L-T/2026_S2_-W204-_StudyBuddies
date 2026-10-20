@@ -133,7 +133,8 @@ String _assignmentUrgencyLabel(String priority) {
 String _effectiveAssignmentUrgencyLabel(StudyItem item) {
   final dueAt = _assignmentDueDateTime(item);
 
-  if (dueAt != null && dueAt.difference(DateTime.now()) <= const Duration(days: 1)) {
+  if (dueAt != null &&
+      dueAt.difference(DateTime.now()) <= const Duration(days: 1)) {
     return 'High urgency';
   }
 
@@ -194,3 +195,19 @@ String _scheduleErrorMessage(
 
   return '$fallbackMessage ($statusCode)';
 }
+
+String _normalizedAssignmentProgress(String value) {
+  final normalized = value.trim().toLowerCase().replaceAll(' ', '_');
+  return switch (normalized) {
+    'completed' => 'completed',
+    'in_progress' => 'in_progress',
+    _ => 'pending',
+  };
+}
+
+String _assignmentProgressLabel(String value) =>
+    switch (_normalizedAssignmentProgress(value)) {
+      'completed' => 'Completed',
+      'in_progress' => 'In Progress',
+      _ => 'Not Started',
+    };
