@@ -12,6 +12,7 @@ from app.schemas.auth import (
     LoginResponseOrOTP,
     ResendLoginOTPRequest,
     VerifyLoginOTPRequest,
+    VerifySignupOTPRequest,
     LoginOTPSettingRequest,
     LoginOTPSettingResponse,
     ForgotPasswordRequest,
@@ -26,6 +27,7 @@ from app.services.auth_service import (
     check_email_available,
     resend_login_otp,
     verify_login_otp,
+    verify_signup_otp,
     get_login_otp_setting,
     update_login_otp_setting,
     request_password_reset,
@@ -145,6 +147,8 @@ def refresh(request: RefreshRequest):
         ) from error
 
 
+
+
 # ---------------------------------------------------------
 # Register
 # ---------------------------------------------------------
@@ -153,18 +157,43 @@ def refresh(request: RefreshRequest):
     "/register",
     response_model=RegisterResponse,
 )
-def register(request: RegisterRequest):
-
+def register(
+    request: RegisterRequest,
+    background_tasks: BackgroundTasks,
+):
     try:
         return signup_with_email(
             request.email,
             request.password,
+            background_tasks,
         )
-
+    except HTTPException:
+        raise
     except Exception as error:
+        logger.exception("REGISTER ERROR")
+        raise HTTPException(
+            status_code=400,
+            detail=str(error),
+        ) from error
 
-        print("REGISTER ERROR:", repr(error))
 
+# ---------------------------------------------------------
+# Verify Signup OTP
+# ---------------------------------------------------------
+
+@router.post("/verify-signup-otp")
+def verify_signup_otp_endpoint(
+    request: VerifySignupOTPRequest,
+):
+    try:
+        return verify_signup_otp(
+            request.email,
+            request.otp,
+        )
+    except HTTPException:
+        raise
+    except Exception as error:
+        logger.exception("SIGNUP OTP ERROR")
         raise HTTPException(
             status_code=400,
             detail=str(error),

@@ -1,9 +1,8 @@
 import 'dart:convert';
-import 'login_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
-
+import 'verify_signup_otp_screen.dart';
 class RegisterScreen extends StatefulWidget {
   const RegisterScreen({super.key});
 
@@ -106,17 +105,17 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
       if (!mounted) return;
 
-      if (response.statusCode == 200) {
-        Navigator.pushAndRemoveUntil(
-          context,
-          MaterialPageRoute(
-            builder: (context) => LoginScreen(
-              successMessage: data['message'],
+        if (response.statusCode == 200 ||
+            response.statusCode == 201) {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => VerifySignupOtpScreen(
+                email: email.trim().toLowerCase(),
+              ),
             ),
-          ),
-          (route) => false,
-        );
-      } else {
+          );
+        } else {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(

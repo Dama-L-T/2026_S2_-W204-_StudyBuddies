@@ -180,30 +180,97 @@ def refresh_access_token(refresh_token: str) -> LoginResponse:
 def signup_with_email(
     email: str,
     password: str,
+    background_tasks: BackgroundTasks,
 ) -> RegisterResponse:
+    email = email.strip().lower()
 
-    supabase = get_supabase_client()
+    # Use the service-role client for server-side user creation.
+    supabase = get_supabase_client(use_service_role=True)
 
-    response = supabase.auth.sign_up(
-        {
-            "email": email,
-            "password": password,
-        }
+    response = supabase.auth.admin.create_user({
+        "email": email,
+        "password": password,
+        "email_confirm": False,
+    })
+
+    user = response.user
+
+    if user is None:
+        raise ValueError("Could not create user.")
+
+    # Reuse the existing OTP service for registration.
+    otp_service = OTPService()
+
+    otp = otp_service.create_otp(
+        email=email,
+        purpose="register",
+        user_id=user.id,
     )
 
-    if response.user is None:
-        raise ValueError("Could not create user")
+    # Send the email in a FastAPI background task.
+    background_tasks.add_task(
+        otp_service.send_otp_email,
+        email,
+        otp,
+        "register",
+    )
 
     return RegisterResponse(
-        message=(
-            "Account created successfully."
-        ),
+        message="Account created. Check your email for the verification code.",
         user=UserResponse(
-            id=response.user.id,
-            email=response.user.email,
+            id=user.id,
+            email=user.email,
         ),
     )
+def verify_signup_otp(
+    email: str,
+    otp: str,
+) -> dict:
+    email = email.strip().lower()
 
+    supabase = get_supabase_client(use_service_role=True)
+
+    # Find the latest registration challenge.
+    challenge_response = (
+        supabase
+        .table("otp_challenges")
+        .select("user_id")
+        .eq("email", email)
+        .eq("purpose", "register")
+        .order("created_at", desc=True)
+        .limit(1)
+        .execute()
+    )
+
+    if not challenge_response.data:
+        raise ValueError(
+            "No registration code found. Please register again or request a new code."
+        )
+
+    user_id = challenge_response.data[0]["user_id"]
+
+    if not user_id:
+        raise ValueError("Registration account was not found.")
+
+    # Check the code, expiry, and attempt limit.
+    # This also deletes the OTP after successful verification.
+    otp_service = OTPService()
+
+    otp_service.verify_otp(
+        email=email,
+        purpose="register",
+        otp=otp,
+    )
+
+    # Mark the Supabase user's email as confirmed.
+    supabase.auth.admin.update_user_by_id(
+        user_id,
+        {"email_confirm": True},
+    )
+
+    return {
+        "message": "Email verified successfully. You can now log in."
+    }
 
 def check_email_available(email: str) -> bool:
     supabase = get_supabase_client(use_service_role=True)
