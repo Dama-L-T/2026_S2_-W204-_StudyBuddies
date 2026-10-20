@@ -3,6 +3,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../chat/chat_send_receive.dart';
 import '../widgets/app_bar.dart';
+import '../matchmaking/blocked_students_page.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({
@@ -158,6 +159,37 @@ class _SettingsPageState extends State<SettingsPage> {
                         builder: (_) => ChatActionListPage(
                           api: _api,
                           type: ChatActionType.blocked,
+                        ),
+                      ),
+                    ),
+                  ),
+                  Divider(height: 1, color: Colors.grey.shade800),
+                  ListTile(
+                    leading: const Icon(
+                      Icons.person_off_outlined,
+                      color: Colors.white,
+                    ),
+                    title: const Text(
+                      'Blocked Students',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    subtitle: const Text(
+                      'View and unblock blocked student profiles',
+                      style: TextStyle(color: Colors.grey),
+                    ),
+                    trailing: const Icon(
+                      Icons.chevron_right,
+                      color: Colors.grey,
+                    ),
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => BlockedStudentsPage(
+                          apiBaseUrl: widget.apiBaseUrl,
+                          accessToken: widget.accessToken,
                         ),
                       ),
                     ),

@@ -1,8 +1,28 @@
 """Match existing profiles, excluding the current student's saved choices."""
 import re
 from app.services.chat_service import ensure_chat_conversation
+from app.services.supabase_service import get_supabase_client
 
 FIELDS = ('name', 'courses', 'interests', 'preferences', 'profile_image')
+
+def _are_students_blocked(
+    supabase,
+    user_id: str,
+    other_id: str,
+) -> bool:
+    """Return True if either student has blocked the other."""
+    result = (
+        supabase.table("student_blocks")
+        .select("id")
+        .or_(
+            f"and(blocker_id.eq.{user_id},blocked_id.eq.{other_id}),"
+            f"and(blocker_id.eq.{other_id},blocked_id.eq.{user_id})"
+        )
+        .limit(1)
+        .execute()
+    )
+
+    return bool(result.data)
 
 
 def rows(query):
@@ -36,7 +56,23 @@ def recommendations(db, user_id, criterion):
         raise LookupError('Complete your profile before finding study buddies.')
     choices = rows(db.table('matchmaking_interests').select('target_student_id').eq('student_id', user_id).order('target_student_id'))
     excluded = {user_id, *(choice['target_student_id'] for choice in choices)}
-    profiles = rows(db.table('profiles').select('user_id,' + ','.join(FIELDS)).order('user_id'))
+
+    # Exclude students involved in a block, in either direction.
+    blocks = rows(
+        db.table('student_blocks')
+        .select('blocker_id,blocked_id')
+        .or_(
+            f'blocker_id.eq.{user_id},blocked_id.eq.{user_id}'
+        )
+    )
+    for block in blocks:
+        excluded.add(
+            block['blocked_id']
+            if block['blocker_id'] == user_id
+            else block['blocker_id']
+        )
+
+    profiles = rows( db.table('profiles') .select('user_id,' + ','.join(FIELDS)) .order('user_id') )
     results = []
     for profile in profiles:
         if profile['user_id'] in excluded:
@@ -51,9 +87,21 @@ def recommendations(db, user_id, criterion):
 def get_public_profile(db, user_id, target_id):
     if user_id == target_id:
         raise LookupError('Open your own profile from the Profile tab.')
-    data = db.table('profiles').select('user_id,' + ','.join((*FIELDS, 'personal_details'))).eq('user_id', target_id).execute().data
+
+    if _are_students_blocked(db, user_id, target_id):
+        raise LookupError('This profile is unavailable.')
+
+    data = (
+        db.table('profiles')
+        .select('user_id,' + ','.join((*FIELDS, 'personal_details')))
+        .eq('user_id', target_id)
+        .execute()
+        .data
+    )
+
     if not data:
         raise LookupError('Profile not found.')
+
     return profile_fields(data[0], detailed=True)
 
 
@@ -74,17 +122,37 @@ def restore_dismissed(db, user_id):
 
 
 def saved_profiles(db, user_id, status):
-    choices = rows(db.table('matchmaking_interests').select('target_student_id').eq(
-        'student_id', user_id
-    ).eq('status', status).order('target_student_id'))
-    ids = [choice['target_student_id'] for choice in choices]
+    choices = rows(
+        db.table('matchmaking_interests')
+        .select('target_student_id')
+        .eq('student_id', user_id)
+        .eq('status', status)
+        .order('target_student_id')
+    )
+
+    ids = [
+        choice['target_student_id']
+        for choice in choices
+        if not _are_students_blocked(
+            db, user_id, choice['target_student_id']
+        )
+    ]
+
     profiles = []
+
     for start in range(0, len(ids), 100):
-        batch = rows(db.table('profiles').select('user_id,' + ','.join(FIELDS)).in_(
-            'user_id', ids[start:start + 100]
-        ).order('user_id'))
+        batch = rows(
+            db.table('profiles')
+            .select('user_id,' + ','.join(FIELDS))
+            .in_('user_id', ids[start:start + 100])
+            .order('user_id')
+        )
         profiles.extend(profile_fields(profile) for profile in batch)
-    return sorted(profiles, key=lambda p: (p['name'].casefold(), p['user_id']))
+
+    return sorted(
+        profiles,
+        key=lambda p: (p['name'].casefold(), p['user_id']),
+    )
 
 
 def restore_profile(db, user_id, target_id):
@@ -110,11 +178,18 @@ def matched_partners(db, user_id):
     ).order('id'))
     partner_ids = set()
     for connection in connections:
-        sender, recipient = connection['student_id'], connection['target_student_id']
+        sender = connection['student_id']
+        recipient = connection['target_student_id']
+
         if sender == user_id and recipient != user_id:
-            partner_ids.add(recipient)
+            partner_id = recipient
         elif recipient == user_id and sender != user_id:
-            partner_ids.add(sender)
+            partner_id = sender
+        else:
+            continue
+
+        if not _are_students_blocked(db, user_id, partner_id):
+            partner_ids.add(partner_id)
     profiles = []
     ids = sorted(partner_ids)
     for start in range(0, len(ids), 100):
@@ -139,7 +214,13 @@ def send_invitation(db, user_id, target_id):
     """Create a pending request; never accept or overwrite an existing pair."""
     if user_id == target_id:
         raise ValueError('You cannot invite yourself.')
+
     get_public_profile(db, user_id, target_id)
+
+    if _are_students_blocked(db, user_id, target_id):
+        raise InvitationConflict(
+            'You cannot invite this student because a block exists between you.'
+        )
 
     def existing_pair():
         result = db.table('student_matching').select(
@@ -182,31 +263,97 @@ def send_invitation(db, user_id, target_id):
 
 
 def invitation_count(db, user_id):
-    invitations = rows(db.table('student_matching').select('id').eq(
-        'target_student_id', user_id
-    ).eq('status', 'pending').order('id'))
-    return {'count': len(invitations), 'ids': [invitation['id'] for invitation in invitations]}
+    invitations = rows(
+        db.table('student_matching')
+        .select('id,student_id')
+        .eq('target_student_id', user_id)
+        .eq('status', 'pending')
+        .order('id')
+    )
+
+    visible_invitations = [
+        invitation
+        for invitation in invitations
+        if not _are_students_blocked(
+            db, user_id, invitation['student_id']
+        )
+    ]
+
+    return {
+        'count': len(visible_invitations),
+        'ids': [invitation['id'] for invitation in visible_invitations],
+    }
 
 
 def incoming_invitations(db, user_id):
-    invitations = rows(db.table('student_matching').select(
-        'id,student_id,created_at'
-    ).eq('target_student_id', user_id).eq('status', 'pending').order('id'))
-    ids = sorted({invitation['student_id'] for invitation in invitations})
+    invitations = rows(
+        db.table('student_matching')
+        .select('id,student_id,created_at')
+        .eq('target_student_id', user_id)
+        .eq('status', 'pending')
+        .order('id')
+    )
+
+    # Hide invitations when either student has blocked the other.
+    invitations = [
+        invitation
+        for invitation in invitations
+        if not _are_students_blocked(
+            db, user_id, invitation['student_id']
+        )
+    ]
+
+    ids = sorted({
+        invitation['student_id']
+        for invitation in invitations
+    })
+
     profiles = {}
+
     for start in range(0, len(ids), 100):
-        for row in rows(db.table('profiles').select(
-            'user_id,name,courses,interests,profile_image,'
-            'name_visible,courses_visible,interests_visible'
-        ).in_('user_id', ids[start:start + 100]).order('user_id')):
-            profile = {'user_id': row['user_id'], 'profile_image': row.get('profile_image') or ''}
+        profile_rows = rows(
+            db.table('profiles')
+            .select(
+                'user_id,name,courses,interests,profile_image,'
+                'name_visible,courses_visible,interests_visible'
+            )
+            .in_('user_id', ids[start:start + 100])
+            .order('user_id')
+        )
+
+        for row in profile_rows:
+            profile = {
+                'user_id': row['user_id'],
+                'profile_image': row.get('profile_image') or '',
+            }
+
             for field in ('name', 'courses', 'interests'):
-                profile[field] = (row.get(field) or '') if row.get(field + '_visible') is True else ''
+                profile[field] = (
+                    row.get(field) or ''
+                ) if row.get(field + '_visible') is True else ''
+
             profiles[row['user_id']] = profile
-    result = [{'id': invitation['id'], 'created_at': invitation['created_at'],
-               'profile': profiles.get(invitation['student_id'], {'user_id': invitation['student_id']})}
-              for invitation in invitations]
-    return sorted(result, key=lambda invitation: (invitation['created_at'], invitation['id']), reverse=True)
+
+    result = [
+        {
+            'id': invitation['id'],
+            'created_at': invitation['created_at'],
+            'profile': profiles.get(
+                invitation['student_id'],
+                {'user_id': invitation['student_id']},
+            ),
+        }
+        for invitation in invitations
+    ]
+
+    return sorted(
+        result,
+        key=lambda invitation: (
+            invitation['created_at'],
+            invitation['id'],
+        ),
+        reverse=True,
+    )
 
 
 def respond_to_invitation(db, user_id, invitation_id, status):
@@ -230,6 +377,11 @@ def respond_to_invitation(db, user_id, invitation_id, status):
     invitation = existing[0]
     sender_id = str(invitation["student_id"])
     current_status = invitation["status"]
+
+    if _are_students_blocked(db, str(user_id), sender_id):
+        raise InvitationConflict(
+            "You cannot respond to this invitation because a block exists between you."
+        )
 
     if current_status == status:
         if status == "accepted":
@@ -276,6 +428,8 @@ def invitation_statuses(db, user_id):
         if not outgoing and connection['target_student_id'] != user_id:
             continue
         partner_id = connection['target_student_id'] if outgoing else connection['student_id']
+        if _are_students_blocked(db, user_id, partner_id):
+            continue
         status = connection['status']
         if status == 'pending':
             status = 'outgoing_pending' if outgoing else 'incoming_pending'

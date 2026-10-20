@@ -9,6 +9,7 @@ class _StudentCard extends StatefulWidget {
     required this.onUninterested,
     required this.onView,
     required this.onInvite,
+    required this.onBlock,
     required this.invitationSent,
   });
   final Recommendation student;
@@ -17,6 +18,7 @@ class _StudentCard extends StatefulWidget {
   final VoidCallback onUninterested;
   final VoidCallback onView;
   final VoidCallback onInvite;
+  final VoidCallback onBlock;
   final bool invitationSent;
   @override
   State<_StudentCard> createState() => _StudentCardState();
@@ -115,6 +117,11 @@ class _StudentCardState extends State<_StudentCard> {
                 OutlinedButton(
                   onPressed: widget.enabled ? widget.onUninterested : null,
                   child: const Text('Uninterested'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: widget.enabled ? widget.onBlock : null,
+                  icon: const Icon(Icons.block),
+                  label: const Text('Block student'),
                 ),
               ],
             ),
