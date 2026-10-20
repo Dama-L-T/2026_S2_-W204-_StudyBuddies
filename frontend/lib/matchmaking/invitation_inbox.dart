@@ -70,6 +70,66 @@ class _InvitationInboxState extends State<_InvitationInbox> {
       if (mounted) setState(() => _acting = false);
     }
   }
+  
+  Future<void> _blockStudent(StudyInvitation invitation) async {
+    if (_loading || _acting) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Block student?'),
+        content: Text(
+          'Block ${invitation.profile.name.isEmpty ? 'this student' : invitation.profile.name}? '
+          'They will no longer be able to interact with you through matching or chat.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Block'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    setState(() {
+      _acting = true;
+      _error = null;
+    });
+
+    try {
+      final message = await widget.api.blockStudent(
+        invitation.profile.userId,
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        _invitations.removeWhere(
+          (item) => item.id == invitation.id,
+        );
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message)),
+      );
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _error = error.toString().replaceFirst('Exception: ', '');
+        });
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _acting = false);
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -135,6 +195,13 @@ class _InvitationInboxState extends State<_InvitationInbox> {
                               ? null
                               : () => _respond(invitation, false),
                           child: const Text('Decline'),
+                        ),
+                        OutlinedButton.icon(
+                          onPressed: _acting || _loading
+                              ? null
+                              : () => _blockStudent(invitation),
+                          icon: const Icon(Icons.block),
+                          label: const Text('Block'),
                         ),
                       ],
                     ),

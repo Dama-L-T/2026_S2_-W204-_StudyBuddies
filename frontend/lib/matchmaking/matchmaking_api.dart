@@ -14,6 +14,17 @@ class Recommendation {
   final List<String> interests;
 }
 
+class BlockedStudent {
+  BlockedStudent.fromJson(Map<String, dynamic> json)
+    : blockedId = json['blocked_id'] as String,
+      profile = StudentProfile.fromJson(
+        Map<String, dynamic>.from(json['profile'] as Map),
+      );
+
+  final String blockedId;
+  final StudentProfile profile;
+}
+
 class StudyInvitation {
   StudyInvitation.fromJson(Map<String, dynamic> json)
     : id = json['id'] as String,
@@ -144,6 +155,27 @@ class MatchmakingApi {
 
   Future<void> removeInterest(String id) async =>
       request('DELETE', '/matchmaking/interests/${Uri.encodeComponent(id)}');
+
+  Future<String> blockStudent(String studentId) async {
+    final response = await request(
+      'POST',
+      '/blocks/${Uri.encodeComponent(studentId)}',
+    ) as Map;
+    return response['message'] as String;
+  }
+
+  Future<List<BlockedStudent>> getBlockedStudents() async => [
+    for (final item in await request('GET', '/blocks') as List)
+      BlockedStudent.fromJson(Map<String, dynamic>.from(item as Map)),
+  ];
+
+  Future<String> unblockStudent(String studentId) async {
+    final response = await request(
+      'DELETE',
+      '/blocks/${Uri.encodeComponent(studentId)}',
+    ) as Map;
+    return response['message'] as String;
+  }
 
   void close() => _client.close();
 }

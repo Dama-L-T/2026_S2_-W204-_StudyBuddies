@@ -199,6 +199,58 @@ class _MatchmakingPageState extends State<MatchmakingPage> {
     }
   }
 
+  Future<void> _blockStudent() async {
+    if (_busy || _students.isEmpty) return;
+
+    final student = _students.first.profile;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Block student?'),
+        content: Text(
+          'Block ${student.name.isEmpty ? 'this student' : student.name}? '
+          'They will no longer be able to interact with you through matching '
+          'or chat while the block is active.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Block'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || !mounted) return;
+
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+
+    try {
+      final message = await _api.blockStudent(student.userId);
+      if (!mounted) return;
+
+      setState(() {
+        _students.removeWhere((item) => item.profile.userId == student.userId);
+        _sessionSkipped.add(student.userId);
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message)),
+      );
+    } catch (error) {
+      if (mounted) setState(() => _error = _message(error));
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   void _exit() => setState(() {
     _swiping = false;
     _students = [];
@@ -394,6 +446,7 @@ class _MatchmakingPageState extends State<MatchmakingPage> {
             onUninterested: () => _saveChoice('uninterested'),
             onView: _viewProfile,
             onInvite: _sendInvitation,
+            onBlock: _blockStudent,
             invitationSent: _sentInvitations.contains(
               _students.first.profile.userId,
             ),

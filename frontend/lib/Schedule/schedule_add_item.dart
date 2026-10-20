@@ -8,7 +8,7 @@ class ScheduleItemDraft {
     required this.time,
     required this.location,
     required this.priority,
-    required this.isCompleted,
+    required this.progress,
   });
 
   final String itemType;
@@ -17,7 +17,7 @@ class ScheduleItemDraft {
   final TimeOfDay time;
   final String location;
   final String priority;
-  final bool isCompleted;
+  final String progress;
 
   Map<String, dynamic> toJson() {
     return {
@@ -27,7 +27,8 @@ class ScheduleItemDraft {
       'time': _timeForApi(time),
       'location': location,
       'priority': priority,
-      'is_completed': isCompleted,
+      'is_completed': progress == 'completed',
+      if (itemType == 'Assignment') 'status': progress,
     };
   }
 }
@@ -65,7 +66,7 @@ class _AddScheduleItemScreenState extends State<AddScheduleItemScreen> {
   TimeOfDay _time = TimeOfDay.now();
   List<int> _reminderMinutes = defaultReminderMinuteOptions;
   List<int> _savedReminderMinutes = const [];
-  bool _isCompleted = false;
+  String _progress = 'pending';
   bool _isLoading = false;
   String? _formError;
 
@@ -89,7 +90,7 @@ class _AddScheduleItemScreenState extends State<AddScheduleItemScreen> {
       _date = DateTime.tryParse(item.date) ?? DateTime.now();
       _time = _timeFromScheduleItem(item.time) ?? TimeOfDay.now();
       _priority = _normalizedAssignmentPriority(item.priority);
-      _isCompleted = item.status.toLowerCase() == 'completed';
+      _progress = _normalizedAssignmentProgress(item.status);
       _loadExistingReminderMinutes(item);
     }
   }
@@ -195,7 +196,7 @@ class _AddScheduleItemScreenState extends State<AddScheduleItemScreen> {
                             _locationController.clear();
                             _priority = 'medium';
                           } else {
-                            _isCompleted = false;
+                            _progress = 'pending';
                           }
                         });
                       }
@@ -294,19 +295,39 @@ class _AddScheduleItemScreenState extends State<AddScheduleItemScreen> {
                 },
               ),
               const SizedBox(height: 12),
-              Material(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(20),
-                child: CheckboxListTile(
-                  value: _isCompleted,
-                  onChanged: (value) {
-                    setState(() {
-                      _isCompleted = value ?? false;
-                    });
-                  },
-                  title: const Text('Completed'),
-                  controlAffinity: ListTileControlAffinity.leading,
+              const Text(
+                'Progress',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  fontStyle: FontStyle.italic,
                 ),
+              ),
+              DropdownButtonFormField<String>(
+                key: const Key('assignment-progress'),
+                initialValue: _progress,
+                dropdownColor: Colors.white,
+                decoration: _inputDecoration(),
+                items: const [
+                  DropdownMenuItem(
+                    value: 'pending',
+                    child: Text('Not Started'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'in_progress',
+                    child: Text('In Progress'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'completed',
+                    child: Text('Completed'),
+                  ),
+                ],
+                onChanged: _isLoading
+                    ? null
+                    : (value) {
+                        if (value != null) setState(() => _progress = value);
+                      },
               ),
             ],
             const SizedBox(height: 24),
@@ -391,7 +412,7 @@ class _AddScheduleItemScreenState extends State<AddScheduleItemScreen> {
       time: _time,
       location: _locationController.text.trim(),
       priority: _priority,
-      isCompleted: _itemType == 'Assignment' && _isCompleted,
+      progress: _itemType == 'Assignment' ? _progress : 'pending',
     );
 
     try {
@@ -461,7 +482,7 @@ class _AddScheduleItemScreenState extends State<AddScheduleItemScreen> {
       date: _dateForApi(draft.date),
       time: _timeForApi(draft.time),
       location: draft.location,
-      status: draft.isCompleted ? 'Completed' : '',
+      status: draft.itemType == 'Assignment' ? draft.progress : '',
       priority: existingItem.priority,
     );
   }
@@ -692,10 +713,7 @@ class _SchedulePickerTile extends StatelessWidget {
 }
 
 class _ReminderPickerTile extends StatelessWidget {
-  const _ReminderPickerTile({
-    required this.value,
-    required this.onChanged,
-  });
+  const _ReminderPickerTile({required this.value, required this.onChanged});
 
   final List<int> value;
   final ValueChanged<List<int>> onChanged;
@@ -808,10 +826,11 @@ class _ReminderPickerSheetState extends State<_ReminderPickerSheet> {
   }
 
   List<Widget> _customReminderTiles() {
-    final customValues = _selectedValues
-        .where((minutes) => !reminderMinuteOptions.contains(minutes))
-        .toList()
-      ..sort((first, second) => second.compareTo(first));
+    final customValues =
+        _selectedValues
+            .where((minutes) => !reminderMinuteOptions.contains(minutes))
+            .toList()
+          ..sort((first, second) => second.compareTo(first));
 
     if (customValues.isEmpty) {
       return const [];
@@ -947,20 +966,14 @@ class _CustomReminderDialogState extends State<_CustomReminderDialog> {
           onPressed: () => Navigator.pop(context),
           child: const Text('Cancel'),
         ),
-        FilledButton(
-          onPressed: _addCustomReminder,
-          child: const Text('Add'),
-        ),
+        FilledButton(onPressed: _addCustomReminder, child: const Text('Add')),
       ],
     );
   }
 
   void _addCustomReminder() {
     final totalMinutes =
-        (_weeks * 7 * 24 * 60) +
-        (_days * 24 * 60) +
-        (_hours * 60) +
-        _minutes;
+        (_weeks * 7 * 24 * 60) + (_days * 24 * 60) + (_hours * 60) + _minutes;
 
     if (totalMinutes <= 0) {
       setState(() {

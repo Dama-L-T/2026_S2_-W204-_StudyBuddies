@@ -34,11 +34,34 @@ class _ProfilePageState extends State<ProfilePage> {
 
   final ImagePicker imagePicker = ImagePicker();
 
+  final List<String> _availableLanguages = const [
+    'English',
+    'Vietnamese',
+    'Mandarin',
+    'Hindi',
+    'Japanese',
+    'Korean',
+    'French',
+    'Spanish',
+    'Other',
+  ];
+
+  final Set<String> _selectedLanguages = {};
+
   XFile? profileImage;
   String? _savedImageUrl;
 
   bool isLoading = true;
   bool isSaving = false;
+  bool _hasChanges = false;
+
+  void _markAsChanged() {
+    if (!_hasChanges) {
+      setState(() {
+        _hasChanges = true;
+      });
+    }
+  }
 
   @override
   void initState() {
@@ -57,6 +80,11 @@ class _ProfilePageState extends State<ProfilePage> {
     coursesController.text = profile.courses;
     interestsController.text = profile.interests;
     preferencesController.text = profile.preferences;
+
+    _selectedLanguages
+      ..clear()
+      ..addAll(StudentProfile.values(profile.languages));
+
     _savedImageUrl = profile.imageUrl;
   }
 
@@ -117,6 +145,7 @@ class _ProfilePageState extends State<ProfilePage> {
 
     setState(() {
       profileImage = selectedImage;
+      _hasChanges = true;
     });
   }
 
@@ -147,6 +176,7 @@ class _ProfilePageState extends State<ProfilePage> {
             courses: coursesController.text.trim(),
             interests: interestsController.text.trim(),
             preferences: preferencesController.text.trim(),
+            languages: _selectedLanguages.join(', '),
           ).toJson(),
         ),
       );
@@ -161,6 +191,10 @@ class _ProfilePageState extends State<ProfilePage> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Profile saved successfully!')),
         );
+
+        setState(() {
+          _hasChanges = false;
+        });
 
         widget.onProfileSaved();
       } else {
@@ -298,6 +332,7 @@ class _ProfilePageState extends State<ProfilePage> {
                     TextField(
                       readOnly: widget.viewedProfile != null,
                       controller: nameController,
+                      onChanged: (_) => _markAsChanged(),
                       decoration: const InputDecoration(
                         hintText: 'Enter your name',
                       ),
@@ -318,6 +353,7 @@ class _ProfilePageState extends State<ProfilePage> {
                     TextField(
                       readOnly: widget.viewedProfile != null,
                       controller: personalDetailsController,
+                      onChanged: (_) => _markAsChanged(),
                       maxLines: 3,
                       decoration: const InputDecoration(
                         hintText: 'Tell us a little about yourself',
@@ -339,6 +375,7 @@ class _ProfilePageState extends State<ProfilePage> {
                     TextField(
                       readOnly: widget.viewedProfile != null,
                       controller: coursesController,
+                      onChanged: (_) => _markAsChanged(),
                       decoration: const InputDecoration(
                         hintText: 'e.g. COMP602, COMP604',
                       ),
@@ -359,6 +396,7 @@ class _ProfilePageState extends State<ProfilePage> {
                     TextField(
                       readOnly: widget.viewedProfile != null,
                       controller: interestsController,
+                      onChanged: (_) => _markAsChanged(),
                       decoration: const InputDecoration(
                         hintText: 'e.g. Programming, AI, Cybersecurity',
                       ),
@@ -379,15 +417,64 @@ class _ProfilePageState extends State<ProfilePage> {
                     TextField(
                       readOnly: widget.viewedProfile != null,
                       controller: preferencesController,
+                      onChanged: (_) => _markAsChanged(),
                       maxLines: 3,
                       decoration: const InputDecoration(
                         hintText: 'e.g. Study preferences, group work, etc.',
                       ),
                     ),
                   ],
-                  const SizedBox(height: 30),
+                  
+                  const SizedBox(height: 20),
+
+                  const Text(
+                    'Languages',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 18,
+                    ),
+                  ),
+
+                  const SizedBox(height: 8),
 
                   if (widget.viewedProfile == null)
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 4,
+                      children: _availableLanguages.map((language) {
+                        return FilterChip(
+                          label: Text(language),
+                          selected: _selectedLanguages.contains(language),
+                          onSelected: (selected) {
+                            setState(() {
+                              if (selected) {
+                                _selectedLanguages.add(language);
+                              } else {
+                                _selectedLanguages.remove(language);
+                              }
+                              _hasChanges = true;
+                            });
+                          },
+                        );
+                      }).toList(),
+                    )
+                  else if (_selectedLanguages.isNotEmpty)
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 4,
+                      children: _selectedLanguages.map((language) {
+                        return Chip(label: Text(language));
+                      }).toList(),
+                    )
+                  else
+                    const Text(
+                      'No languages added.',
+                      style: TextStyle(color: Colors.grey),
+                    ),
+
+                  const SizedBox(height: 30),
+
+                  if (widget.viewedProfile == null && _hasChanges)
                     SizedBox(
                       width: double.infinity,
                       child: ElevatedButton(
@@ -403,6 +490,7 @@ class _ProfilePageState extends State<ProfilePage> {
                             : const Text('Save Profile'),
                       ),
                     ),
+                  const SizedBox(height: 30),
                 ],
               ),
             ),

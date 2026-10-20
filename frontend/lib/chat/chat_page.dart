@@ -327,20 +327,41 @@ class _ChatPageState extends State<ChatPage> {
               Positioned(
                 right: 0,
                 bottom: 0,
-                child: Container(
-                  width: 12,
-                  height: 12,
-                  decoration: BoxDecoration(
-                    color: conversation['is_online'] == true
-                        ? Colors.green
-                        : Colors.grey,
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                      color: Colors.white,
-                      width: 2,
-                    ),
-                  ),
-                ),
+                child: _value(
+                          conversation['availability_status'],
+                          'available',
+                        ).toLowerCase() == 'busy'
+                    ? Container(
+                        width: 20,
+                        height: 20,
+                        decoration: BoxDecoration(
+                          color: Colors.orange.shade100,
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: Colors.white,
+                            width: 2,
+                          ),
+                        ),
+                        child: Icon(
+                          Icons.coffee,
+                          size: 12,
+                          color: Colors.orange.shade800,
+                        ),
+                      )
+                    : Container(
+                        width: 12,
+                        height: 12,
+                        decoration: BoxDecoration(
+                          color: conversation['is_online'] == true
+                              ? Colors.green
+                              : Colors.grey,
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: Colors.white,
+                            width: 2,
+                          ),
+                        ),
+                      ),
               ),
             ],
           ),
@@ -354,19 +375,31 @@ class _ChatPageState extends State<ChatPage> {
                 ),
               ),
               const SizedBox(width: 8),
-              Text(
-                conversation['is_online'] == true
-                    ? 'Online'
-                    : _formatLastSeen(conversation['last_seen_at']),
-                style: TextStyle(
-                  fontSize: 11,
-                  color: conversation['is_online'] == true
-                      ? Colors.green
-                      : Colors.grey,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
+              _value(
+                        conversation['availability_status'],
+                        'available',
+                      ).toLowerCase() == 'busy'
+                  ? Text(
+                      'Busy',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Colors.orange.shade800,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    )
+                  : Text(
+                      conversation['is_online'] == true
+                          ? 'Online'
+                          : _formatLastSeen(conversation['last_seen_at']),
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: conversation['is_online'] == true
+                            ? Colors.green
+                            : Colors.grey,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
             ],
           ),
           subtitle: Row(

@@ -1,8 +1,11 @@
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../chat/chat_send_receive.dart';
 import '../widgets/app_bar.dart';
+import '../matchmaking/blocked_students_page.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({
@@ -28,6 +31,11 @@ class _SettingsPageState extends State<SettingsPage> {
   bool isLoading = true;
   bool isUpdating = false;
 
+  String _availabilityStatus = 'available';
+  String _savedAvailabilityStatus = 'available';
+  bool _availabilityLoading = true;
+  bool _availabilitySaving = false;
+
   @override
   void initState() {
     super.initState();
@@ -40,6 +48,7 @@ class _SettingsPageState extends State<SettingsPage> {
     );
 
     _loadLoginOtpSetting();
+    _loadAvailability();
   }
 
   Future<void> _loadLoginOtpSetting() async {
@@ -98,6 +107,83 @@ class _SettingsPageState extends State<SettingsPage> {
             'Could not save login verification: ${error.toString().replaceFirst('Exception: ', '')}',
           ),
         ),
+      );
+    }
+  }
+  
+  Future<void> _loadAvailability() async {
+    try {
+      final response = await http.get(
+        Uri.parse('${widget.apiBaseUrl}/profile/availability'),
+        headers: {
+          'Authorization': 'Bearer ${widget.accessToken}',
+        },
+      );
+
+      if (response.statusCode != 200) {
+        throw Exception('Could not load availability.');
+      }
+
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      final status = data['availability_status'] as String? ?? 'available';
+
+      if (!mounted) return;
+
+      setState(() {
+        _availabilityStatus = status;
+        _savedAvailabilityStatus = status;
+        _availabilityLoading = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+
+      setState(() => _availabilityLoading = false);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not load availability: $error')),
+      );
+    }
+  }
+
+  Future<void> _saveAvailability() async {
+    if (_availabilitySaving) return;
+
+    setState(() => _availabilitySaving = true);
+
+    try {
+      final response = await http.put(
+        Uri.parse('${widget.apiBaseUrl}/profile/availability'),
+        headers: {
+          'Authorization': 'Bearer ${widget.accessToken}',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'availability_status': _availabilityStatus,
+        }),
+      );
+
+      if (response.statusCode != 200) {
+        final body = jsonDecode(response.body);
+        throw Exception(body['detail'] ?? 'Could not save availability.');
+      }
+
+      if (!mounted) return;
+
+      setState(() {
+        _savedAvailabilityStatus = _availabilityStatus;
+        _availabilitySaving = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Availability saved successfully.')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+
+      setState(() => _availabilitySaving = false);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not save availability: $error')),
       );
     }
   }
@@ -165,6 +251,37 @@ class _SettingsPageState extends State<SettingsPage> {
                   Divider(height: 1, color: Colors.grey.shade800),
                   ListTile(
                     leading: const Icon(
+                      Icons.person_off_outlined,
+                      color: Colors.white,
+                    ),
+                    title: const Text(
+                      'Blocked Students',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    subtitle: const Text(
+                      'View and unblock blocked student profiles',
+                      style: TextStyle(color: Colors.grey),
+                    ),
+                    trailing: const Icon(
+                      Icons.chevron_right,
+                      color: Colors.grey,
+                    ),
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => BlockedStudentsPage(
+                          apiBaseUrl: widget.apiBaseUrl,
+                          accessToken: widget.accessToken,
+                        ),
+                      ),
+                    ),
+                  ),
+                  Divider(height: 1, color: Colors.grey.shade800),
+                  ListTile(
+                    leading: const Icon(
                       Icons.visibility_off_outlined,
                       color: Colors.white,
                     ),
@@ -196,6 +313,67 @@ class _SettingsPageState extends State<SettingsPage> {
                 ],
               ),
             ),
+          ),
+          const SizedBox(height: 28),
+          const Text(
+            'Availability',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1A1A1A),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: _availabilityLoading
+                ? const Center(child: CircularProgressIndicator())
+                : Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const Text(
+                        'Let other students know when you can study.',
+                        style: TextStyle(color: Colors.grey),
+                      ),
+                      const SizedBox(height: 16),
+                      SegmentedButton<String>(
+                        segments: const [
+                          ButtonSegment<String>(
+                            value: 'available',
+                            label: Text('Available'),
+                            icon: Icon(Icons.check_circle_outline),
+                          ),
+                          ButtonSegment<String>(
+                            value: 'busy',
+                            label: Text('Busy'),
+                            icon: Icon(Icons.coffee_outlined),
+                          ),
+                        ],
+                        selected: {_availabilityStatus},
+                        onSelectionChanged: _availabilitySaving
+                            ? null
+                            : (selection) {
+                                setState(() {
+                                  _availabilityStatus = selection.first;
+                                });
+                              },
+                      ),
+                      const SizedBox(height: 16),
+                      FilledButton(
+                        onPressed: _availabilitySaving ||
+                                _availabilityStatus == _savedAvailabilityStatus
+                            ? null
+                            : _saveAvailability,
+                        child: Text(
+                          _availabilitySaving ? 'Saving...' : 'Save availability',
+                        ),
+                      ),
+                    ],
+                  ),
           ),
           const SizedBox(height: 28),
           const Text(

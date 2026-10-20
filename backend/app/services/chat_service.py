@@ -25,13 +25,18 @@ def _profile_name(client, user_id: str) -> str:
 def _profile_presence(client, user_id: str) -> dict:
     result = (
         client.table("profiles")
-        .select("last_seen_at")
+        .select("last_seen_at, availability_status")
         .eq("user_id", user_id)
         .limit(1)
         .execute()
     )
 
-    last_seen_at = result.data[0].get("last_seen_at") if result.data else None
+    profile = result.data[0] if result.data else {}
+    last_seen_at = profile.get("last_seen_at")
+    availability_status = (
+        profile.get("availability_status") or "available"
+    ).lower()
+
     is_online = False
 
     if last_seen_at:
@@ -51,6 +56,7 @@ def _profile_presence(client, user_id: str) -> dict:
     return {
         "is_online": is_online,
         "last_seen_at": last_seen_at,
+        "availability_status": availability_status,
     }
 
 
@@ -79,6 +85,129 @@ def _other_user_id(conversation: dict[str, Any], user_id: str) -> str:
     participant_one = str(conversation["participant_one_id"])
     participant_two = str(conversation["participant_two_id"])
     return participant_two if participant_one == user_id else participant_one
+
+
+
+def ensure_chat_conversation(user_id: str, other_id: str) -> dict:
+    client = _client()
+
+    if user_id == other_id:
+        raise HTTPException(
+            status_code=400,
+            detail="You cannot create a conversation with yourself.",
+        )
+
+    _ensure_students_not_profile_blocked(client, user_id, other_id)
+    _ensure_students_matched(client, user_id, other_id)
+
+    columns = "id, participant_one_id, participant_two_id, created_at"
+
+    # Look for an existing conversation in either participant order.
+    for first_id, second_id in (
+        (user_id, other_id),
+        (other_id, user_id),
+    ):
+        result = (
+            client.table("chat_conversations")
+            .select(columns)
+            .eq("participant_one_id", first_id)
+            .eq("participant_two_id", second_id)
+            .limit(1)
+            .execute()
+        )
+
+        if result.data:
+            return result.data[0]
+
+    # Create a conversation only if one does not already exist.
+    result = (
+        client.table("chat_conversations")
+        .insert({
+            "participant_one_id": user_id,
+            "participant_two_id": other_id,
+        })
+        .execute()
+    )
+
+    if not result.data:
+        raise HTTPException(
+            status_code=500,
+            detail="Could not create the chat conversation.",
+        )
+
+    return result.data[0]
+
+
+def _are_students_matched(client, user_id: str, other_id: str) -> bool:
+    """Return True if either direction has an accepted matching record."""
+    forward = (
+        client.table("student_matching")
+        .select("id")
+        .eq("student_id", user_id)
+        .eq("target_student_id", other_id)
+        .eq("status", "accepted")
+        .limit(1)
+        .execute()
+    )
+
+    if forward.data:
+        return True
+
+    reverse = (
+        client.table("student_matching")
+        .select("id")
+        .eq("student_id", other_id)
+        .eq("target_student_id", user_id)
+        .eq("status", "accepted")
+        .limit(1)
+        .execute()
+    )
+
+    return bool(reverse.data)
+
+
+def _ensure_students_matched(client, user_id: str, other_id: str) -> None:
+    if not _are_students_matched(client, user_id, other_id):
+        raise HTTPException(
+            status_code=403,
+            detail="You can only chat with students who have accepted your invitation.",
+        )
+
+
+def _are_students_profile_blocked(client, user_id: str, other_id: str) -> bool:
+    """Return True if either student has blocked the other at profile level."""
+    blocked_by_me = (
+        client.table("student_blocks")
+        .select("id")
+        .eq("blocker_id", user_id)
+        .eq("blocked_id", other_id)
+        .limit(1)
+        .execute()
+    )
+
+    if blocked_by_me.data:
+        return True
+
+    blocked_me = (
+        client.table("student_blocks")
+        .select("id")
+        .eq("blocker_id", other_id)
+        .eq("blocked_id", user_id)
+        .limit(1)
+        .execute()
+    )
+
+    return bool(blocked_me.data)
+
+
+def _ensure_students_not_profile_blocked(
+    client, user_id: str, other_id: str
+) -> None:
+    if _are_students_profile_blocked(client, user_id, other_id):
+        raise HTTPException(
+            status_code=403,
+            detail="Chat is unavailable because a profile block exists between you.",
+        )
 
 
 def _find_action_by_conversation(client, user_id: str, conversation_id: str):
@@ -306,6 +435,14 @@ def list_conversations(user_id: str) -> list[dict]:
         conversation_id = str(conversation["id"])
         other_id = _other_user_id(conversation, user_id)
 
+        # Hide conversations if either student has profile-blocked the other.
+        if _are_students_profile_blocked(client, user_id, other_id):
+            continue
+
+        # Only show conversations between students with an accepted match.
+        if not _are_students_matched(client, user_id, other_id):
+            continue
+
         hidden_result = (
             client.table("chat_user_actions")
             .select("id")
@@ -355,6 +492,7 @@ def list_conversations(user_id: str) -> list[dict]:
             "is_blocked": blocked_by_me or has_blocked_me,
             "is_online": presence["is_online"],
             "last_seen_at": presence["last_seen_at"],
+            "availability_status": presence["availability_status"],
         })
 
     conversations.sort(
@@ -366,7 +504,11 @@ def list_conversations(user_id: str) -> list[dict]:
 
 def list_messages(conversation_id: str, user_id: str) -> list[dict]:
     client = _client()
-    _get_conversation(client, conversation_id, user_id)
+    conversation = _get_conversation(client, conversation_id, user_id)
+    other_id = _other_user_id(conversation, user_id)
+
+    _ensure_students_not_profile_blocked(client, user_id, other_id)
+    _ensure_students_matched(client, user_id, other_id)
 
     result = (
         client.table("chat_messages")
@@ -407,7 +549,11 @@ def list_messages(conversation_id: str, user_id: str) -> list[dict]:
 
 def mark_conversation_read(conversation_id: str, user_id: str) -> dict:
     client = _client()
-    _get_conversation(client, conversation_id, user_id)
+    conversation = _get_conversation(client, conversation_id, user_id)
+    other_id = _other_user_id(conversation, user_id)
+
+    _ensure_students_not_profile_blocked(client, user_id, other_id)
+    _ensure_students_matched(client, user_id, other_id)
 
     client.table("chat_messages").update({
         "read_at": datetime.now(timezone.utc).isoformat(),
@@ -426,6 +572,9 @@ def send_message(conversation_id: str, user_id: str, content: str) -> dict:
     client = _client()
     conversation = _get_conversation(client, conversation_id, user_id)
     other_id = _other_user_id(conversation, user_id)
+
+    _ensure_students_not_profile_blocked(client, user_id, other_id)
+    _ensure_students_matched(client, user_id, other_id)
 
     if _is_user_blocked(client, user_id, other_id) or _is_user_blocked(client, other_id, user_id):
         raise HTTPException(
@@ -461,7 +610,11 @@ def send_message(conversation_id: str, user_id: str, content: str) -> dict:
 
 def edit_message(conversation_id: str, message_id: str, user_id: str, content: str) -> dict:
     client = _client()
-    _get_conversation(client, conversation_id, user_id)
+    conversation = _get_conversation(client, conversation_id, user_id)
+    other_id = _other_user_id(conversation, user_id)
+
+    _ensure_students_not_profile_blocked(client, user_id, other_id)
+    _ensure_students_matched(client, user_id, other_id)
 
     content = content.strip()
     if not content:
@@ -507,7 +660,11 @@ def edit_message(conversation_id: str, message_id: str, user_id: str, content: s
 
 def delete_message(conversation_id: str, message_id: str, user_id: str) -> dict:
     client = _client()
-    _get_conversation(client, conversation_id, user_id)
+    conversation = _get_conversation(client, conversation_id, user_id)
+    other_id = _other_user_id(conversation, user_id)
+
+    _ensure_students_not_profile_blocked(client, user_id, other_id)
+    _ensure_students_matched(client, user_id, other_id)
 
     result = (
         client.table("chat_messages")
@@ -630,7 +787,11 @@ def report_message(
     reason: str,
 ) -> dict:
     client = _client()
-    _get_conversation(client, conversation_id, user_id)
+    conversation = _get_conversation(client, conversation_id, user_id)
+    other_id = _other_user_id(conversation, user_id)
+
+    _ensure_students_not_profile_blocked(client, user_id, other_id)
+    _ensure_students_matched(client, user_id, other_id)
 
     reason = reason.strip()
     if not reason:
@@ -705,7 +866,11 @@ def unreport_message(
     user_id: str,
 ) -> dict:
     client = _client()
-    _get_conversation(client, conversation_id, user_id)
+    conversation = _get_conversation(client, conversation_id, user_id)
+    other_id = _other_user_id(conversation, user_id)
+
+    _ensure_students_not_profile_blocked(client, user_id, other_id)
+    _ensure_students_matched(client, user_id, other_id)
 
     message_result = (
         client.table("chat_messages")

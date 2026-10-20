@@ -532,7 +532,7 @@ def _create_assignment(
         "title": payload.title.strip(),
         "due_date": due_date.isoformat(),
         "priority": _assignment_priority(payload.priority),
-        "status": _assignment_status(payload.is_completed),
+        "status": _assignment_status(payload.is_completed, payload.status),
     }
 
     rows = (
@@ -592,7 +592,7 @@ def _update_assignment(
         "title": payload.title.strip(),
         "due_date": due_date.isoformat(),
         "priority": _assignment_priority(payload.priority),
-        "status": _assignment_status(payload.is_completed),
+        "status": _assignment_status(payload.is_completed, payload.status),
         "updated_at": datetime.now().isoformat(),
     }
 
@@ -718,7 +718,11 @@ def _assignment_priority(selected_priority: str) -> str:
     raise ValueError("priority must be high, medium, or low")
 
 
-def _assignment_status(is_completed: bool) -> str:
+def _assignment_status(is_completed: bool, status: str | None = None) -> str:
+    if status is not None:
+        if status not in {"pending", "in_progress", "completed"}:
+            raise ValueError("status must be pending, in_progress, or completed")
+        return status
     return "completed" if is_completed else "pending"
 
 
