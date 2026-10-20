@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -20,6 +22,7 @@ class ScheduleItemCreate(BaseModel):
     location: str = ""
     priority: str = "medium"
     is_completed: bool = False
+    status: Literal["pending", "in_progress", "completed"] | None = None
 
 
 class ScheduleItemUpdate(BaseModel):
@@ -29,6 +32,7 @@ class ScheduleItemUpdate(BaseModel):
     location: str = ""
     priority: str = "medium"
     is_completed: bool = False
+    status: Literal["pending", "in_progress", "completed"] | None = None
 
 
 class ReminderCreate(BaseModel):
